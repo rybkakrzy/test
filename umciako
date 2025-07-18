@@ -148,3 +148,44 @@ export class InfoDisplayComponent {
   type="uppercase"
   whenEmptyShow="BRAK"
 />
+
+
+
+<div class="info-display">
+  <ng-container *ngIf="label">
+    <span class="info-display__label">{{ label }}</span>
+  </ng-container>
+  <span
+    class="info-display__value"
+    [class.info-display__value--empty]="displayValue === whenEmptyShow"
+  >
+    {{ displayValue }}
+  </span>
+</div>
+
+
+// Komponent wyświetlający label + wartość z opcjonalnym formatowaniem
+.info-display {
+  display: flex;
+  flex-direction: column;
+
+  &__label {
+    font-size: 0.875rem;     // 14px
+    color: #6c757d;          // stonowany szary
+    margin-bottom: 0.25rem;  // odstęp od wartości
+    line-height: 1.2;
+  }
+
+  &__value {
+    font-size: 1.125rem;     // 18px
+    font-weight: 600;
+    color: #212529;          // głęboka czerń
+    line-height: 1.3;
+
+    &--empty {
+      color: #adb5bd;        // jaśniejszy szary
+      font-style: italic;
+      font-weight: normal;
+    }
+  }
+}
