@@ -1,0 +1,125 @@
+import {
+  Component,
+  Input,
+  Inject,
+  Optional,
+  LOCALE_ID,
+} from '@angular/core';
+import {
+  CurrencyPipe,
+  DecimalPipe,
+  PercentPipe,
+  DatePipe,
+  TitleCasePipe,
+  UpperCasePipe,
+  LowerCasePipe
+} from '@angular/common';
+
+@Component({
+  selector: 'app-info-display',
+  templateUrl: './info-display.component.html',
+  styleUrls: ['./info-display.component.css'],
+  providers: [
+    CurrencyPipe,
+    DecimalPipe,
+    PercentPipe,
+    DatePipe,
+    TitleCasePipe,
+    UpperCasePipe,
+    LowerCasePipe
+  ]
+})
+export class InfoDisplayComponent {
+  @Input() label?: string;
+
+  @Input() value?: any;
+
+  // Replacement text when value is empty or undefined
+  @Input() whenEmptyShow: string = 'brak wartości';
+
+  // Format type (replaces previous "pipe")
+  @Input() type?: string;
+
+  // Optional arguments for the selected pipe/type
+  @Input() pipeArgs?: any[];
+
+  constructor(
+    private currencyPipe: CurrencyPipe,
+    private decimalPipe: DecimalPipe,
+    private percentPipe: PercentPipe,
+    private datePipe: DatePipe,
+    private titleCasePipe: TitleCasePipe,
+    private upperCasePipe: UpperCasePipe,
+    private lowerCasePipe: LowerCasePipe,
+    @Optional() @Inject(LOCALE_ID) private locale: string
+  ) {}
+
+  /**
+   * Computes the final formatted value or fallback if empty
+   */
+  get displayValue(): string {
+    const isEmpty =
+      this.value === null ||
+      this.value === undefined ||
+      (typeof this.value === 'string' && this.value.trim() === '');
+
+    if (isEmpty) {
+      return this.whenEmptyShow;
+    }
+
+    if (!this.type) {
+      return this.value.toString();
+    }
+
+    try {
+      switch (this.type) {
+        case 'currency':
+          return this.currencyPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
+        case 'decimal':
+          return this.decimalPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
+        case 'percent':
+          return this.percentPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
+        case 'date':
+          return this.datePipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
+        case 'titlecase':
+          return this.titleCasePipe.transform(this.value) ?? this.whenEmptyShow;
+        case 'uppercase':
+          return this.upperCasePipe.transform(this.value) ?? this.whenEmptyShow;
+        case 'lowercase':
+          return this.lowerCasePipe.transform(this.value) ?? this.whenEmptyShow;
+        default:
+          return this.value.toString();
+      }
+    } catch {
+      return this.whenEmptyShow;
+    }
+  }
+}
+
+
+
+<div class="flex flex-col">
+  <ng-container *ngIf="label">
+    <span class="text-sm text-gray-500">{{ label }}</span>
+  </ng-container>
+  <span class="text-lg font-semibold text-gray-900">
+    {{ displayValue }}
+  </span>
+</div>
+
+
+:host {
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  font-size: 0.875rem; /* ~14px */
+  color: #6b7280;       /* gray-500 */
+}
+
+.value {
+  font-size: 1.125rem; /* ~18px */
+  font-weight: 600;    /* semibold */
+  color: #111827;      /* gray-900 */
+}
