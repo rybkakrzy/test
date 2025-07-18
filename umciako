@@ -1,191 +1,75 @@
-import {
-  Component,
-  Input,
-  Inject,
-  Optional,
-  LOCALE_ID,
-} from '@angular/core';
-import {
-  CurrencyPipe,
-  DecimalPipe,
-  PercentPipe,
-  DatePipe,
-  TitleCasePipe,
-  UpperCasePipe,
-  LowerCasePipe
-} from '@angular/common';
+# InfoDisplayComponent
 
-@Component({
-  selector: 'app-info-display',
-  templateUrl: './info-display.component.html',
-  styleUrls: ['./info-display.component.css'],
-  providers: [
-    CurrencyPipe,
-    DecimalPipe,
-    PercentPipe,
-    DatePipe,
-    TitleCasePipe,
-    UpperCasePipe,
-    LowerCasePipe
-  ]
-})
-export class InfoDisplayComponent {
-  @Input() label?: string;
+Komponent Angular służący do wyświetlania pary **label + wartość** z opcjonalnym formatowaniem i obsługą pustych danych.
 
-  @Input() value?: any;
+---
 
-  // Replacement text when value is empty or undefined
-  @Input() whenEmptyShow: string = 'brak wartości';
+## 🧩 Zastosowanie
 
-  // Format type (replaces previous "pipe")
-  @Input() type?: string;
+Umożliwia prostą i estetyczną prezentację danych tekstowych, dat, liczb, kwot, itp.
 
-  // Optional arguments for the selected pipe/type
-  @Input() pipeArgs?: any[];
+---
 
-  constructor(
-    private currencyPipe: CurrencyPipe,
-    private decimalPipe: DecimalPipe,
-    private percentPipe: PercentPipe,
-    private datePipe: DatePipe,
-    private titleCasePipe: TitleCasePipe,
-    private upperCasePipe: UpperCasePipe,
-    private lowerCasePipe: LowerCasePipe,
-    @Optional() @Inject(LOCALE_ID) private locale: string
-  ) {}
+## ✅ Cechy
 
-  /**
-   * Computes the final formatted value or fallback if empty
-   */
-  get displayValue(): string {
-    const isEmpty =
-      this.value === null ||
-      this.value === undefined ||
-      (typeof this.value === 'string' && this.value.trim() === '');
+- Wyświetla label nad wartością
+- Obsługuje brak wartości (tekst konfigurowalny)
+- Obsługuje różne typy danych (`date`, `currency`, `uppercase`, itd.)
+- Pozwala przekazać argumenty do formatowania (`pipeArgs`)
+- Stylowanie w czystym SCSS, bez zależności zewnętrznych
 
-    if (isEmpty) {
-      return this.whenEmptyShow;
-    }
+---
 
-    if (!this.type) {
-      return this.value.toString();
-    }
+## 🔧 API
 
-    try {
-      switch (this.type) {
-        case 'currency':
-          return this.currencyPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
-        case 'decimal':
-          return this.decimalPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
-        case 'percent':
-          return this.percentPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
-        case 'date':
-          return this.datePipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
-        case 'titlecase':
-          return this.titleCasePipe.transform(this.value) ?? this.whenEmptyShow;
-        case 'uppercase':
-          return this.upperCasePipe.transform(this.value) ?? this.whenEmptyShow;
-        case 'lowercase':
-          return this.lowerCasePipe.transform(this.value) ?? this.whenEmptyShow;
-        default:
-          return this.value.toString();
-      }
-    } catch {
-      return this.whenEmptyShow;
-    }
-  }
-}
+| Input           | Typ           | Opis                                                                 |
+|----------------|----------------|----------------------------------------------------------------------|
+| `label`        | `string?`      | Etykieta wyświetlana nad wartością                                  |
+| `value`        | `any`          | Wartość do wyświetlenia                                             |
+| `type`         | `string?`      | Typ formatowania (`date`, `currency`, `uppercase`, itd.)            |
+| `pipeArgs`     | `any[]?`       | Argumenty przekazywane do pipe'a (np. `['PLN', 'symbol']`)          |
+| `whenEmptyShow`| `string`       | Tekst wyświetlany, gdy `value` jest puste (`''`, `null`, `undefined`) |
 
+---
 
+## 💡 Przykłady użycia
 
-<div class="flex flex-col">
-  <ng-container *ngIf="label">
-    <span class="text-sm text-gray-500">{{ label }}</span>
-  </ng-container>
-  <span class="text-lg font-semibold text-gray-900">
-    {{ displayValue }}
-  </span>
-</div>
-
-
-:host {
-  display: flex;
-  flex-direction: column;
-}
-
-.label {
-  font-size: 0.875rem; /* ~14px */
-  color: #6b7280;       /* gray-500 */
-}
-
-.value {
-  font-size: 1.125rem; /* ~18px */
-  font-weight: 600;    /* semibold */
-  color: #111827;      /* gray-900 */
-}
-
-
-<!-- Data z fallbackiem -->
+### 1. Prosty tekst
+```html
 <app-info-display
-  label="Utworzono"
-  [value]="createdAt"
-  type="date"
-  [pipeArgs]="['yyyy-MM-dd']"
-  whenEmptyShow="Nieznana data"
+  label="Imię"
+  value="Kasia"
 />
 
-<!-- Pusta wartość -->
+
+2. Wartość sformatowana jako data
+html
+Kopiuj
+Edytuj
+<app-info-display
+  label="Utworzono"
+  [value]="user.createdAt"
+  type="date"
+  [pipeArgs]="['yyyy-MM-dd']"
+/>
+
+
+3. Wartość sformatowana jako waluta
+html
+Kopiuj
+Edytuj
+<app-info-display
+  label="Kwota"
+  [value]="299.99"
+  type="currency"
+  [pipeArgs]="['PLN', 'symbol', '1.2-2']"
+/>
+4. Brak wartości z własnym tekstem
+html
+Kopiuj
+Edytuj
 <app-info-display
   label="Opis"
   [value]="''"
   whenEmptyShow="Brak opisu"
 />
-
-<!-- Uppercase z fallbackiem -->
-<app-info-display
-  label="Status"
-  value=""
-  type="uppercase"
-  whenEmptyShow="BRAK"
-/>
-
-
-
-<div class="info-display">
-  <ng-container *ngIf="label">
-    <span class="info-display__label">{{ label }}</span>
-  </ng-container>
-  <span
-    class="info-display__value"
-    [class.info-display__value--empty]="displayValue === whenEmptyShow"
-  >
-    {{ displayValue }}
-  </span>
-</div>
-
-
-// Komponent wyświetlający label + wartość z opcjonalnym formatowaniem
-.info-display {
-  display: flex;
-  flex-direction: column;
-
-  &__label {
-    font-size: 0.875rem;     // 14px
-    color: #6c757d;          // stonowany szary
-    margin-bottom: 0.25rem;  // odstęp od wartości
-    line-height: 1.2;
-  }
-
-  &__value {
-    font-size: 1.125rem;     // 18px
-    font-weight: 600;
-    color: #212529;          // głęboka czerń
-    line-height: 1.3;
-
-    &--empty {
-      color: #adb5bd;        // jaśniejszy szary
-      font-style: italic;
-      font-weight: normal;
-    }
-  }
-}
