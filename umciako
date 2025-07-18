@@ -123,3 +123,28 @@ export class InfoDisplayComponent {
   font-weight: 600;    /* semibold */
   color: #111827;      /* gray-900 */
 }
+
+
+<!-- Data z fallbackiem -->
+<app-info-display
+  label="Utworzono"
+  [value]="createdAt"
+  type="date"
+  [pipeArgs]="['yyyy-MM-dd']"
+  whenEmptyShow="Nieznana data"
+/>
+
+<!-- Pusta wartość -->
+<app-info-display
+  label="Opis"
+  [value]="''"
+  whenEmptyShow="Brak opisu"
+/>
+
+<!-- Uppercase z fallbackiem -->
+<app-info-display
+  label="Status"
+  value=""
+  type="uppercase"
+  whenEmptyShow="BRAK"
+/>
