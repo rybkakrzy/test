@@ -14,21 +14,35 @@ export class DynamicControlComponent {
       provideDetails: [false]
     });
 
-    // Obsługa dynamicznego pola na podstawie wartości checkboxa
-    this.form.get('provideDetails')?.valueChanges.subscribe(checked => {
+    this.form.get('provideDetails')?.valueChanges.subscribe((checked: boolean) => {
       if (checked) {
-        // Dodajemy pole "details" do FormGroup
-        this.form.addControl('details', this.fb.control('', Validators.required));
+        this.addDetailsGroup();
       } else {
-        // Usuwamy pole "details"
-        this.form.removeControl('details');
+        this.removeDetailsGroup();
       }
     });
   }
 
+  private addDetailsGroup(): void {
+    if (!this.form.contains('details')) {
+      const detailsGroup = this.fb.group({
+        age: [null, [Validators.required, Validators.min(0)]],
+        address: ['', Validators.required]
+      });
+
+      this.form.addControl('details', detailsGroup);
+    }
+  }
+
+  private removeDetailsGroup(): void {
+    if (this.form.contains('details')) {
+      this.form.removeControl('details');
+    }
+  }
+
   onSubmit(): void {
     if (this.form.valid) {
-      console.log('Dane formularza:', this.form.value);
+      console.log('Form value:', this.form.value);
     } else {
       this.form.markAllAsTouched();
     }
@@ -36,25 +50,15 @@ export class DynamicControlComponent {
 }
 
 
-
-<form [formGroup]="form" (ngSubmit)="onSubmit()">
+<!-- Wyświetl dodatkowe pola, jeśli grupa "details" została dodana -->
+<div *ngIf="form.contains('details')" [formGroupName]="'details'">
   <label>
-    Imię:
-    <input type="text" formControlName="name">
+    Wiek:
+    <input type="number" formControlName="age">
   </label>
 
   <label>
-    <input type="checkbox" formControlName="provideDetails">
-    Chcę podać więcej danych
+    Adres:
+    <input type="text" formControlName="address">
   </label>
-
-  <!-- Wyświetl dodatkowe pole, jeśli zostało dodane do FormGroup -->
-  <div *ngIf="form.contains('details')">
-    <label>
-      Szczegóły:
-      <input type="text" formControlName="details">
-    </label>
-  </div>
-
-  <button type="submit">Wyślij</button>
-</form>
+</div>
