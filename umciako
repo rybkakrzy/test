@@ -1,290 +1,60 @@
-/* d2-label-value.component.ts */
-import {
-  Component,
-  Input,
-  Inject,
-  Optional,
-  LOCALE_ID,
-} from '@angular/core';
-import {
-  CurrencyPipe,
-  DecimalPipe,
-  PercentPipe,
-  DatePipe,
-  TitleCasePipe,
-  UpperCasePipe,
-  LowerCasePipe
-} from '@angular/common';
+import { Component } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 
 @Component({
-  selector: 'd2-label-value',
-  templateUrl: './d2-label-value.component.html',
-  styleUrls: ['./d2-label-value.component.scss'],
-  providers: [
-    CurrencyPipe,
-    DecimalPipe,
-    PercentPipe,
-    DatePipe,
-    TitleCasePipe,
-    UpperCasePipe,
-    LowerCasePipe
-  ]
+  selector: 'app-dynamic-control',
+  templateUrl: './dynamic-control.component.html',
 })
-export class D2LabelValueComponent {
-  @Input() label?: string;
-  @Input() value?: any;
-  @Input() whenEmptyShow: string = 'brak wartości';
-  @Input() type?: string;
-  @Input() pipeArgs?: any[];
-  @Input() layout: 'vertical' | 'horizontal' = 'vertical';
-  @Input() width: 'auto' | 'half' | 'full' = 'auto';
-  @Input() status: 'normal' | 'success' | 'warning' | 'error' | 'custom' = 'normal';
-  @Input() color?: string;
+export class DynamicControlComponent {
+  form: FormGroup;
 
-  constructor(
-    private currencyPipe: CurrencyPipe,
-    private decimalPipe: DecimalPipe,
-    private percentPipe: PercentPipe,
-    private datePipe: DatePipe,
-    private titleCasePipe: TitleCasePipe,
-    private upperCasePipe: UpperCasePipe,
-    private lowerCasePipe: LowerCasePipe,
-    @Optional() @Inject(LOCALE_ID) private locale: string
-  ) {}
+  constructor(private fb: FormBuilder) {
+    this.form = this.fb.group({
+      name: ['', Validators.required],
+      provideDetails: [false]
+    });
 
-  get displayValue(): string {
-    const isEmpty =
-      this.value === null ||
-      this.value === undefined ||
-      (typeof this.value === 'string' && this.value.trim() === '');
-
-    if (isEmpty) {
-      return this.whenEmptyShow;
-    }
-
-    if (!this.type) {
-      return this.value.toString();
-    }
-
-    try {
-      switch (this.type) {
-        case 'currency':
-          return this.currencyPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
-        case 'decimal':
-          return this.decimalPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
-        case 'percent':
-          return this.percentPipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
-        case 'date':
-          return this.datePipe.transform(this.value, ...this.pipeArgs ?? []) ?? this.whenEmptyShow;
-        case 'titlecase':
-          return this.titleCasePipe.transform(this.value) ?? this.whenEmptyShow;
-        case 'uppercase':
-          return this.upperCasePipe.transform(this.value) ?? this.whenEmptyShow;
-        case 'lowercase':
-          return this.lowerCasePipe.transform(this.value) ?? this.whenEmptyShow;
-        default:
-          return this.value.toString();
+    // Obsługa dynamicznego pola na podstawie wartości checkboxa
+    this.form.get('provideDetails')?.valueChanges.subscribe(checked => {
+      if (checked) {
+        // Dodajemy pole "details" do FormGroup
+        this.form.addControl('details', this.fb.control('', Validators.required));
+      } else {
+        // Usuwamy pole "details"
+        this.form.removeControl('details');
       }
-    } catch {
-      return this.whenEmptyShow;
+    });
+  }
+
+  onSubmit(): void {
+    if (this.form.valid) {
+      console.log('Dane formularza:', this.form.value);
+    } else {
+      this.form.markAllAsTouched();
     }
   }
 }
 
-/* d2-label-value.component.html */
-<div class="d2-label-value d2-label-value--{{ layout }} d2-label-value--width-{{ width }}">
-  <ng-container *ngIf="layout === 'vertical'">
-    <ng-container *ngIf="label">
-      <span class="d2-label-value__label">{{ label }}</span>
-    </ng-container>
-    <span
-      class="d2-label-value__value d2-label-value__value--{{ status }}"
-      [ngStyle]="status === 'custom' && color ? { color: color } : {}"
-      [class.d2-label-value__value--empty]="displayValue === whenEmptyShow"
-    >
-      {{ displayValue }}
-    </span>
-  </ng-container>
 
-  <ng-container *ngIf="layout === 'horizontal'">
-    <span *ngIf="label" class="d2-label-value__label d2-label-value__label--horizontal">{{ label }}</span>
-    <span
-      class="d2-label-value__value d2-label-value__value--horizontal d2-label-value__value--{{ status }}"
-      [ngStyle]="status === 'custom' && color ? { color: color } : {}"
-      [class.d2-label-value__value--empty]="displayValue === whenEmptyShow"
-    >
-      {{ displayValue }}
-    </span>
-  </ng-container>
-</div>
 
-/* d2-label-value.component.scss */
-.d2-label-value {
-  &--vertical {
-    display: flex;
-    flex-direction: column;
-  }
+<form [formGroup]="form" (ngSubmit)="onSubmit()">
+  <label>
+    Imię:
+    <input type="text" formControlName="name">
+  </label>
 
-  &--horizontal {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 1rem;
-  }
+  <label>
+    <input type="checkbox" formControlName="provideDetails">
+    Chcę podać więcej danych
+  </label>
 
-  &--width-auto {
-    width: auto;
-    min-width: 300px;
-    max-width: 300px;
-  }
+  <!-- Wyświetl dodatkowe pole, jeśli zostało dodane do FormGroup -->
+  <div *ngIf="form.contains('details')">
+    <label>
+      Szczegóły:
+      <input type="text" formControlName="details">
+    </label>
+  </div>
 
-  &--width-half {
-    width: 50%;
-  }
-
-  &--width-full {
-    width: 100%;
-  }
-
-  &__label {
-    font-size: 0.875rem;
-    color: #6c757d;
-    margin-bottom: 0.25rem;
-    line-height: 1.2;
-
-    &--horizontal {
-      margin-bottom: 0;
-      min-width: 120px;
-    }
-  }
-
-  &__value {
-    font-size: 1.125rem;
-    font-weight: 600;
-    line-height: 1.3;
-
-    &--empty {
-      color: #adb5bd;
-      font-style: italic;
-      font-weight: normal;
-    }
-
-    &--horizontal {
-      flex: 1;
-    }
-
-    &--normal {
-      color: #212529;
-    }
-
-    &--success {
-      color: #28a745;
-    }
-
-    &--warning {
-      color: #fd7e14;
-    }
-
-    &--error {
-      color: #dc3545;
-    }
-  }
-}
-
-/* README.md */
-# D2LabelValueComponent
-
-Komponent Angular służący do wyświetlania pary **label + wartość** z opcjonalnym formatowaniem i obsługą pustych danych.
-
-## 📉 Zastosowanie
-
-Umożliwia prostą i estetyczną prezentację danych tekstowych, dat, liczb, kwot, itp.
-
-## ✅ Cechy
-
-- Wyświetla label nad wartością lub obok niej (konfigurowalne)
-- Obsługuje brak wartości (tekst konfigurowalny)
-- Obsługuje różne typy danych (`date`, `currency`, `uppercase`, itd.)
-- Pozwala przekazać argumenty do formatowania (`pipeArgs`)
-- Stylowanie w czystym SCSS, bez zależności zewnętrznych
-- Parametryzowana szerokość: `auto`, `50%`, `100%`
-- Wsparcie dla koloru domyślnego (`status`) lub własnego (`color`)
-
-## 🔧 API
-
-| Input           | Typ                                         | Opis                                                                 |
-|----------------|----------------------------------------------|----------------------------------------------------------------------|
-| `label`        | `string?`                                    | Etykieta wyświetlana nad lub obok wartości                           |
-| `value`        | `any`                                        | Wartość do wyświetlenia                                              |
-| `type`         | `string?`                                    | Typ formatowania (`date`, `currency`, `uppercase`, itd.)            |
-| `pipeArgs`     | `any[]?`                                     | Argumenty przekazywane do pipe'a (np. `['PLN', 'symbol']`)          |
-| `whenEmptyShow`| `string`                                     | Tekst wyświetlany, gdy `value` jest puste (`''`, `null`, `undefined`) |
-| `layout`       | `'vertical' | 'horizontal'`                   | Określa układ: pionowy (domyślny) lub poziomy                        |
-| `width`        | `'auto' | 'half' | 'full'`                    | Szerokość komponentu: automatyczna, 50%, 100%                        |
-| `status`       | `'normal' | 'success' | 'warning' | 'error' | 'custom'` | Styl kolorystyczny wartości lub własny przez `color`                 |
-| `color`        | `string?`                                    | Własny kolor tekstu (np. `#ff00ff`), aktywowany tylko w `status='custom'` |
-
-## 💡 Przykłady użycia
-
-```html
-<d2-label-value
-  label="E-mail"
-  [value]="user.email"
-  layout="vertical"
-  width="auto"
-/>
-
-<d2-label-value
-  label="Status"
-  [value]="status"
-  layout="horizontal"
-  width="half"
-  status="success"
-/>
-
-<d2-label-value
-  label="Temperatura"
-  [value]="42"
-  status="custom"
-  color="#ff00ff"
-/>
-```
-
-## 🎨 Styl
-
-Komponent posiada własne style w pliku SCSS (`d2-label-value.component.scss`) i nie wymaga żadnych bibliotek CSS. Styl jest minimalistyczny, konfigurowalny i można go łatwo rozszerzyć.
-
-## 😀 Instalacja
-
-Dodaj komponent do dowolnego modułu, np. `SharedModule`:
-
-```ts
-@NgModule({
-  declarations: [D2LabelValueComponent],
-  exports: [D2LabelValueComponent],
-})
-export class SharedModule {}
-```
-
-## 📁 Struktura
-
-```
-d2-label-value/
-├── d2-label-value.component.ts
-├── d2-label-value.component.html
-├── d2-label-value.component.scss
-└── README.md
-```
-
-## 📌 Wskazówki
-
-- Wartość `value` nie powinna być obiektem – przekaż `.toString()` lub sformatuj wcześniej.
-- Aby obsługiwać własne pipe'y, rozbuduj `switch-case` lub przekaż funkcję przez `@Input`.
-- Parametr `layout` ułatwia dostosowanie komponentu do siatek formularzy i tabel.
-- Używając `status='custom'`, możesz w pełni kontrolować kolor tekstu.
-
-## 🔮 TODO
-
-- [ ] Obsługa własnych pipe’ów jako obiekty
-- [ ] Obsługa wariantów wyglądu (np. `variant="subtle"`)
-- [ ] Testy jednostkowe
+  <button type="submit">Wyślij</button>
+</form>
