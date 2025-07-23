@@ -1,3 +1,98 @@
+// ----------------------
+// Konfiguracja
+// ----------------------
+
+$grid-columns: 12;
+
+$grid-gutters: (
+  xs: 4px,
+  sm: 8px,
+  md: 16px,
+  lg: 24px
+);
+
+$grid-breakpoints: (
+  sm: 576px,
+  md: 768px,
+  lg: 992px,
+  xl: 1200px
+);
+
+// ----------------------
+// ROW
+// ----------------------
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+
+  // Domyślny gutter (md)
+  $default-gutter: map-get($grid-gutters, md);
+  margin-left: -$default-gutter / 2;
+  margin-right: -$default-gutter / 2;
+
+  > [class*="col-"] {
+    padding-left: $default-gutter / 2;
+    padding-right: $default-gutter / 2;
+  }
+
+  // Gaps
+  @each $size, $gap in $grid-gutters {
+    &.gap-#{$size} {
+      margin-left: -$gap / 2;
+      margin-right: -$gap / 2;
+
+      > [class*="col-"] {
+        padding-left: $gap / 2;
+        padding-right: $gap / 2;
+      }
+    }
+  }
+
+  // No-gutters
+  &.no-gutters {
+    margin-left: 0;
+    margin-right: 0;
+
+    > [class*="col-"] {
+      padding-left: 0;
+      padding-right: 0;
+    }
+  }
+}
+
+// ----------------------
+// COL – full width base
+// ----------------------
+
+[class*="col-"] {
+  width: 100%;
+}
+
+// ----------------------
+// COL and OFFSET per breakpoint
+// ----------------------
+
+@each $breakpoint, $min-width in $grid-breakpoints {
+  @media (min-width: $min-width) {
+    @for $i from 1 through $grid-columns {
+      .col-#{$breakpoint}-#{$i} {
+        flex: 0 0 #{($i / $grid-columns) * 100}%;
+        max-width: #{($i / $grid-columns) * 100}%;
+      }
+
+      @if $i < $grid-columns {
+        .offset-#{$breakpoint}-#{$i} {
+          margin-left: #{($i / $grid-columns) * 100%};
+        }
+      }
+    }
+  }
+}
+
+
+
+
 // ⚙️ Konfiguracja
 $grid-columns: 12;
 
