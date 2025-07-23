@@ -1,3 +1,61 @@
+// Mapa kolorów – łatwa rozbudowa
+$button-colors: (
+  orange: #e4572e,
+  blue: #3e8ed0,
+  navy: #2f3b94,
+  gray: #666
+);
+
+// Mapa rozmiarów
+$button-sizes: (
+  12: 12px,
+  14: 14px,
+  16: 16px,
+  19: 19px
+);
+
+.button-outline {
+  border: 2px solid transparent;
+  background-color: transparent;
+  padding: 0.4em 1em;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  display: inline-block;
+
+  // Generowanie klas kolorów
+  @each $name, $color in $button-colors {
+    &.outline-#{$name} {
+      color: $color;
+      border-color: $color;
+
+      &:hover {
+        background-color: $color;
+        color: white;
+      }
+    }
+  }
+
+  // Generowanie klas rozmiarów
+  @each $size, $font-size in $button-sizes {
+    &.size-#{$size} {
+      font-size: $font-size;
+    }
+  }
+
+  // Opcjonalnie: disabled
+  &.disabled,
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+
+
+
 // Container for rows – flex-based layout
 .row {
   display: flex;
