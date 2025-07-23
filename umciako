@@ -1,5 +1,40 @@
 @use "sass:math";
 
+// 📐 Breakpointy i maksymalne szerokości kontenera
+$container-breakpoints: (
+  sm: 540px,
+  md: 720px,
+  lg: 960px,
+  xl: 1140px,
+  xxl: 1320px
+);
+
+// 🔧 Padding poziomy (stały)
+$container-padding-x: 16px;
+
+// ------------------------------
+// GŁÓWNY CONTAINER
+// ------------------------------
+
+.container {
+  width: 100%;
+  padding-left: $container-padding-x;
+  padding-right: $container-padding-x;
+  margin-left: auto;
+  margin-right: auto;
+
+  // Responsywne max-widthy
+  @each $breakpoint, $max-width in $container-breakpoints {
+    @media (min-width: #{strip-unit($max-width) + 60}px) {
+      max-width: $max-width;
+    }
+  }
+}
+
+
+
+@use "sass:math";
+
 // ------------------------------
 // Konfiguracja
 // ------------------------------
