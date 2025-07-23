@@ -12,6 +12,88 @@ $button-sizes: (
   19: 19px
 );
 
+// Wspólna baza przycisku
+.button-base {
+  padding: 0.4em 1em;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  display: inline-block;
+  text-align: center;
+
+  &.disabled,
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  // Rozmiary
+  @each $size, $font-size in $button-sizes {
+    &.size-#{$size} {
+      font-size: $font-size;
+    }
+  }
+}
+
+// FILL buttons
+@each $name, $color in $button-colors {
+  .button-fill-#{quote($name)} {
+    @extend .button-base;
+    background-color: $color;
+    color: white;
+
+    &:hover {
+      filter: brightness(0.9);
+    }
+  }
+}
+
+// OUTLINE buttons
+@each $name, $color in $button-colors {
+  .button-outline-#{quote($name)} {
+    @extend .button-base;
+    background-color: transparent;
+    border: 2px solid $color;
+    color: $color;
+
+    &:hover {
+      background-color: $color;
+      color: white;
+    }
+  }
+}
+
+// TEXT buttons
+@each $name, $color in $button-colors {
+  .button-text-#{quote($name)} {
+    @extend .button-base;
+    background-color: transparent;
+    color: $color;
+    border: none;
+
+    &:hover {
+      background-color: rgba($color, 0.1);
+    }
+  }
+}
+
+
+$button-colors: (
+  orange: #e4572e,
+  navy: #2f3b94,
+  blue: #3e8ed0,
+  grey: #666
+);
+
+$button-sizes: (
+  12: 12px,
+  14: 14px,
+  16: 16px,
+  19: 19px
+);
+
 // 🧱 Wspólna podstawa
 .button-base {
   padding: 0.4em 1em;
