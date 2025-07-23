@@ -1,3 +1,153 @@
+// =======================
+// GRID SYSTEM CONFIG
+// =======================
+
+$grid-columns: 12;
+
+$grid-breakpoints: (
+  sm: 576px,
+  md: 768px,
+  lg: 992px,
+  xl: 1200px
+);
+
+$grid-gutters: (
+  xs: 4px,
+  sm: 8px,
+  md: 16px,
+  lg: 24px
+);
+
+// =======================
+// BASE RESET
+// =======================
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+// =======================
+// ROW
+// =======================
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+
+  $default-gutter: map-get($grid-gutters, md);
+  margin-left: -$default-gutter / 2;
+  margin-right: -$default-gutter / 2;
+
+  > [class*="col-"] {
+    padding-left: $default-gutter / 2;
+    padding-right: $default-gutter / 2;
+  }
+}
+
+// =======================
+// GAP HELPERS
+// =======================
+
+@each $size, $gap in $grid-gutters {
+  .gap-#{$size} {
+    margin-left: -$gap / 2;
+    margin-right: -$gap / 2;
+
+    > [class*="col-"] {
+      padding-left: $gap / 2;
+      padding-right: $gap / 2;
+    }
+  }
+}
+
+// =======================
+// NO-GUTTERS
+// =======================
+
+.no-gutters {
+  margin-left: 0;
+  margin-right: 0;
+
+  > [class*="col-"] {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+// =======================
+// FALLBACK COL – full width by default
+// =======================
+
+[class*="col-"] {
+  width: 100%;
+}
+
+// =======================
+// RESPONSIVE COLUMNS & OFFSETS
+// =======================
+
+@each $breakpoint, $min-width in $grid-breakpoints {
+  @media (min-width: $min-width) {
+    @for $i from 1 through $grid-columns {
+      .col-#{$breakpoint}-#{$i} {
+        flex: 0 0 #{($i / $grid-columns) * 100}%;
+        max-width: #{($i / $grid-columns) * 100}%;
+      }
+
+      @if $i < $grid-columns {
+        .offset-#{$breakpoint}-#{$i} {
+          margin-left: #{($i / $grid-columns) * 100}%;
+        }
+      }
+    }
+  }
+}
+
+// =======================
+// FLEX HELPERS
+// =======================
+
+// Automatic grow to fill remaining space
+.col {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+// Shrink to fit content
+.col-auto {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+}
+
+// Order helpers
+@for $i from 0 through 12 {
+  .order-#{$i} {
+    order: $i;
+  }
+}
+
+.order-first {
+  order: -1;
+}
+
+.order-last {
+  order: 999;
+}
+
+// Justify content (horizontal alignment for .row)
+.justify-content-start    { justify-content: flex-start; }
+.justify-content-end      { justify-content: flex-end; }
+.justify-content-center   { justify-content: center; }
+.justify-content-between  { justify-content: space-between; }
+.justify-content-around   { justify-content: space-around; }
+.justify-content-evenly   { justify-content: space-evenly; }
+
+
+
 // ⚙️ Zmienne
 $grid-columns: 12;
 
