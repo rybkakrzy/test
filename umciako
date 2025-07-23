@@ -1,3 +1,52 @@
+$button-heights: (
+  12: 28px,
+  14: 32px,
+  16: 36px,
+  19: 44px
+);
+
+.button-outline {
+  border: 2px solid transparent;
+  background-color: transparent;
+  padding: 0 1em; // poziome tylko, brak pionowego
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+
+  // Wymuszamy wysokość przez flexbox + height
+  @each $size, $height in $button-heights {
+    &.size-#{$size} {
+      font-size: #{$size}px;
+      height: $height;
+    }
+  }
+
+  // Kolory (przykład z poprzedniego SCSS)
+  @each $name, $color in $button-colors {
+    &.outline-#{$name} {
+      color: $color;
+      border-color: $color;
+
+      &:hover {
+        background-color: $color;
+        color: white;
+      }
+    }
+  }
+
+  // Styl dla przycisków nieaktywnych
+  &.disabled,
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
 
 @import 'path/to/file'; // bez .scss
 // ---------------------------------------------
