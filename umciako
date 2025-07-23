@@ -1,3 +1,82 @@
+// ⚙️ Konfiguracja
+$grid-columns: 12;
+
+$grid-gutters: (
+  xs: 4px,
+  sm: 8px,
+  md: 16px,
+  lg: 24px
+);
+
+$grid-breakpoints: (
+  sm: 576px,
+  md: 768px,
+  lg: 992px,
+  xl: 1200px
+);
+
+// 📦 ROW
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: -($gutter: map-get($grid-gutters, md)) / 2;
+  margin-right: -($gutter: map-get($grid-gutters, md)) / 2;
+
+  // gap-y i gap-x
+  @each $size, $gap in $grid-gutters {
+    &.gap-#{$size} {
+      margin-left: -$gap / 2;
+      margin-right: -$gap / 2;
+
+      > [class*="col-"] {
+        padding-left: $gap / 2;
+        padding-right: $gap / 2;
+      }
+    }
+  }
+
+  // no-gutters = 0 padding
+  &.no-gutters {
+    margin-left: 0;
+    margin-right: 0;
+
+    > [class*="col-"] {
+      padding-left: 0;
+      padding-right: 0;
+    }
+  }
+}
+
+// 🧱 COL - podstawowy (100% szerokości)
+[class*="col-"] {
+  width: 100%;
+  padding-left: map-get($grid-gutters, md) / 2;
+  padding-right: map-get($grid-gutters, md) / 2;
+}
+
+// 📐 Kolumny i offsety dla każdego breakpointu
+@each $breakpoint, $min-width in $grid-breakpoints {
+  @media (min-width: $min-width) {
+    @for $i from 1 through $grid-columns {
+      // col-[breakpoint]-[i]
+      .col-#{$breakpoint}-#{$i} {
+        flex: 0 0 #{($i / $grid-columns) * 100}%;
+        max-width: #{($i / $grid-columns) * 100}%;
+      }
+
+      // offset-[breakpoint]-[i]
+      @if $i < $grid-columns {
+        .offset-#{$breakpoint}-#{$i} {
+          margin-left: #{($i / $grid-columns) * 100}%;
+        }
+      }
+    }
+  }
+}
+
+
+
+
 $button-colors: (
   orange: #e4572e,
   navy: #2f3b94,
