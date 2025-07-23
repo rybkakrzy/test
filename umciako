@@ -1,3 +1,57 @@
+// ---------------------------------------------
+// Base Colors
+// ---------------------------------------------
+$white:       #ffffff;
+$black:       #0d0b04;
+
+$grey-01:     #f3f4f1;
+$grey-02:     #a6a99b;
+$grey-03:     #40383b;
+$grey-04:     #111210;
+
+// ---------------------------------------------
+// Accent Colors with Opacities
+// ---------------------------------------------
+
+$violet-10:   #f1e9ff; // 10% opacity
+$violet-50:   #d5beff; // 50% opacity
+$violet:      #7724ff;
+$violet-150:  #3c1280;
+
+$sky-10:      #e4f5ff; // 10%
+$sky-50:      #bee8fe; // 50%
+$sky:         #89d5fd;
+$sky-150:     #2585a7b;
+
+$maroon-10:   #f8e6f5; // 10%
+$maroon-50:   #ff90c7; // 50%
+$maroon:      #4d0020;
+$maroon-150:  #340016;
+
+$raspberry-50:#f86bd5; // 50%
+$raspberry:   #d40199;
+$raspberry-150: #bf096a;
+
+$blush-50:    #fabefe;
+$blush:       #f689fd;
+$blush-150:   #be0cb3;
+
+$sun-10:      #ffecf5; // 10%
+$sun-50:      #ffee73;
+$sun:         #ffe100;
+$sun-150:     #aa8500;
+
+// ---------------------------------------------
+// Functional Colors
+// ---------------------------------------------
+
+$green-01:    #cdf4d8;
+$green-02:    #65ff59;
+$green-03:    #128f00;
+$red:         #ce2323;
+
+
+
 // Mapa kolorów – łatwa rozbudowa
 $button-colors: (
   orange: #e4572e,
