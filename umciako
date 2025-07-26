@@ -1,3 +1,45 @@
+import { Component } from '@angular/core';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+
+@Component({
+  selector: 'app-registration',
+  templateUrl: './registration.component.html',
+  styleUrls: ['./registration.component.css']
+})
+export class RegistrationComponent {
+  registrationForm: FormGroup;
+
+  constructor(private fb: FormBuilder) {
+    // Initialize the form with validation rules
+    this.registrationForm = this.fb.group({
+      firstName: ['', [Validators.required, Validators.minLength(2)]],
+      email: ['', [Validators.required, Validators.email]],
+      password: ['', [Validators.required, Validators.minLength(6)]],
+      acceptTerms: [false, [Validators.requiredTrue]]
+    });
+  }
+
+  // Shortcut getter for easier access to form controls
+  get f() {
+    return this.registrationForm.controls;
+  }
+
+  onSubmit(): void {
+    if (this.registrationForm.invalid) {
+      this.registrationForm.markAllAsTouched();
+      return;
+    }
+
+    const formData = this.registrationForm.value;
+
+    // Here you would typically send formData to a backend API
+    console.log('Form submitted:', formData);
+  }
+}
+
+
+/-------------------------
+
 @use "sass:math";
 
 // 📐 Breakpointy i maksymalne szerokości kontenera
