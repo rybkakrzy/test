@@ -1,4 +1,89 @@
 // ===============================
+// models.ts
+// ===============================
+
+export enum DocumentType {
+  Oswiadczenie = 'oswiadczenie',
+  OswiadczenieWeksel = 'oswiadczenieWeksel',
+  Wyciag = 'wyciag'
+}
+
+export interface CmkowirBGKModel {
+  kkf: string;
+  currentDate: Date;
+  client: Client;
+  contracts: Contract[];
+  selectedContract?: Contract;
+  selectedDocumentTypes: DocumentType[];
+  oswiadczenie?: DocumentFormDetail;
+  oswiadczenieWeksel?: DocumentFormDetail;
+  wyciag?: WyciagDetail;
+}
+
+export interface Client {
+  name: string;
+  clientNumber: string;
+  regon: string;
+  nip: string;
+  postalCode: string;
+  street: string;
+  city: string;
+}
+
+export interface Contract {
+  contractNumber: string;
+  facility: string;
+  accountNumber: string;
+  fullAccountNumber: string;
+  activationDate: Date;
+}
+
+export interface WyciagDetail {
+  bookNumber: string;
+}
+
+export interface DocumentFormDetail {
+  sameDay: boolean;
+  sameDayDates: {
+    electronicDate: string;
+    manualDate: string;
+  };
+  separateDates: {
+    application: {
+      electronicDate: string;
+      manualDate: string;
+    };
+    form: {
+      electronicDate: string;
+      manualDate: string;
+    };
+  };
+  hasAnnexes: boolean;
+  annexes: Annex[];
+}
+
+export interface Annex {
+  annexNumber: string;
+  sameDay: boolean;
+  sameDayDates: {
+    electronicDate: string;
+    manualDate: string;
+  };
+  separateDates: {
+    application: {
+      electronicDate: string;
+      manualDate: string;
+    };
+    form: {
+      electronicDate: string;
+      manualDate: string;
+    };
+  };
+}
+
+
+
+// ===============================
 // client-contracts.component.html
 // ===============================
 
