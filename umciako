@@ -111,6 +111,41 @@
                     <div *ngIf="annex.get('sameDay')?.value" formGroupName="sameDayDates">
                       <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
                       <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+                    </div>
+
+                    <div *ngIf="!annex.get('sameDay')?.value" formGroupName="separateDates">
+                      <h6>Wniosek</h6>
+                      <div formGroupName="application">
+                        <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
+                        <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+                      </div>
+                      <h6>Formularz</h6>
+                      <div formGroupName="form">
+                        <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
+                        <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <button type="button" (click)="editAnnex(key, i)">Edytuj</button>
+                      <button type="button" (click)="removeAnnex(key, i)">Usuń</button>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" (click)="addAnnex(key)">Dodaj aneks</button>
+              </div>
+            </ng-container>
+          </div>
+        </ng-container>
+      </div>
+    </section>
+  </form>
+
+  <section style="margin-top: 20px">
+    <button (click)="save()">Zapisz</button>
+    <button (click)="download()">Pobierz dokumenty</button>
+  </section>
+</div>
 
 
 // ===============================
