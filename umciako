@@ -1,3 +1,9 @@
+<div *ngIf="formGroup.get(['options', key, 'hasAnnexes'])?.value && getAnnexesArray(key).length === 0"
+                 style="background-color: yellow; padding: 8px; margin-top: 10px;">
+              Brak aneksów
+            </div>
+
+
 <!-- =============================== -->
 <!-- client-contracts.component.html -->
 <!-- =============================== -->
