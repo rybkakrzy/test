@@ -1,4 +1,173 @@
 // ===============================
+// client-contracts.component.ts
+// ===============================
+
+import { Component, OnInit } from '@angular/core';
+import { FormArray, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ClientService } from './client.service';
+import { CmkowirBGKModel, DocumentFormDetail, WyciagDetail, BGKDocumentType } from './models';
+
+@Component({
+  selector: 'app-client-contracts',
+  templateUrl: './client-contracts.component.html',
+  styleUrls: ['./client-contracts.component.scss']
+})
+export class ClientContractsComponent implements OnInit {
+  data!: CmkowirBGKModel;
+  formGroup!: FormGroup;
+  selectedContractIndex = -1;
+  readonly optionKeys: BGKDocumentType[] = [
+    'StatementListESignatures',
+    'StatementListESignaturesBillOfExchange',
+    'MKB'
+  ];
+
+  constructor(private clientService: ClientService, private fb: FormBuilder) {}
+
+  ngOnInit(): void {
+    this.clientService.getClientData().subscribe(data => {
+      this.data = data;
+
+      const contractIndex = this.data.contracts.findIndex(
+        c => c.contractNumber === this.data.selectedContract?.contractNumber
+      );
+      this.selectedContractIndex = contractIndex >= 0 ? contractIndex : -1;
+
+      this.initForm();
+    });
+  }
+
+  initForm(): void {
+    this.formGroup = this.fb.group({
+      options: this.fb.group({
+        StatementListESignatures: this.buildOptionFormGroup(this.data.oswiadczenie),
+        StatementListESignaturesBillOfExchange: this.buildOptionFormGroup(this.data.oswiadczenieWeksel),
+        MKB: this.fb.group({
+          enabled: [!!this.data.wyciag?.bookNumber],
+          bookNumber: [this.data.wyciag?.bookNumber ?? '']
+        })
+      })
+    });
+  }
+
+  buildOptionFormGroup(data?: DocumentFormDetail): FormGroup {
+    return this.fb.group({
+      enabled: [!!data],
+      sameDay: [data?.sameDay ?? true],
+      sameDayDates: this.fb.group({
+        electronicDate: [data?.sameDayDates?.electronicDate ?? ''],
+        manualDate: [data?.sameDayDates?.manualDate ?? '']
+      }),
+      separateDates: this.fb.group({
+        application: this.fb.group({
+          electronicDate: [data?.separateDates?.application.electronicDate ?? ''],
+          manualDate: [data?.separateDates?.application.manualDate ?? '']
+        }),
+        form: this.fb.group({
+          electronicDate: [data?.separateDates?.form.electronicDate ?? ''],
+          manualDate: [data?.separateDates?.form.manualDate ?? '']
+        })
+      }),
+      hasAnnexes: [data?.hasAnnexes ?? false],
+      annexes: this.fb.array((data?.annexes ?? []).map(a => this.createAnnexForm(a)))
+    });
+  }
+
+  getDocumentLabel(type: BGKDocumentType): string {
+    switch (type) {
+      case 'StatementListESignatures':
+        return 'Oświadczenie lista e-podpisów';
+      case 'StatementListESignaturesBillOfExchange':
+        return 'Oświadczenie lista e-podpisów - Weksel';
+      case 'MKB':
+        return 'Wyciąg z ksiąg banku';
+      default:
+        return 'Nieznany typ';
+    }
+  }
+
+  createAnnexForm(data?: any): FormGroup {
+    return this.fb.group({
+      annexNumber: [data?.annexNumber ?? '', Validators.required],
+      sameDay: [data?.sameDay ?? true],
+      sameDayDates: this.fb.group({
+        electronicDate: [data?.sameDayDates?.electronicDate ?? ''],
+        manualDate: [data?.sameDayDates?.manualDate ?? '']
+      }),
+      separateDates: this.fb.group({
+        application: this.fb.group({
+          electronicDate: [data?.separateDates?.application.electronicDate ?? ''],
+          manualDate: [data?.separateDates?.application.manualDate ?? '']
+        }),
+        form: this.fb.group({
+          electronicDate: [data?.separateDates?.form.electronicDate ?? ''],
+          manualDate: [data?.separateDates?.form.manualDate ?? '']
+        })
+      })
+    });
+  }
+
+  getAnnexesArray(optionKey: BGKDocumentType): FormArray {
+    return this.formGroup.get(['options', optionKey, 'annexes']) as FormArray;
+  }
+
+  addAnnex(optionKey: BGKDocumentType): void {
+    this.getAnnexesArray(optionKey).push(this.createAnnexForm());
+  }
+
+  removeAnnex(optionKey: BGKDocumentType, index: number): void {
+    this.getAnnexesArray(optionKey).removeAt(index);
+  }
+
+  editAnnex(optionKey: BGKDocumentType, index: number): void {
+    const annex = this.getAnnexesArray(optionKey).at(index);
+    (annex as any).markAllAsTouched();
+  }
+
+  selectContract(index: number): void {
+    this.selectedContractIndex = index;
+    this.data.selectedContract = this.data.contracts[index];
+    this.initForm();
+  }
+
+  resetSelectedContract(): void {
+    this.selectedContractIndex = -1;
+    this.data.selectedContract = undefined;
+    this.initForm();
+  }
+
+  isOptionEnabled(optionKey: BGKDocumentType): boolean {
+    return this.formGroup.get(['options', optionKey, 'enabled'])?.value;
+  }
+
+  onDocumentTypeChange(): void {
+    const optionsGroup = this.formGroup.get('options') as FormGroup;
+    this.data.selectedDocumentTypes = this.optionKeys.filter(key => optionsGroup.get([key, 'enabled'])?.value);
+  }
+
+  updateDataFromForm(): void {
+    const optionsGroup = this.formGroup.get('options')!.value;
+
+    this.data.oswiadczenie = optionsGroup.StatementListESignatures.enabled ? optionsGroup.StatementListESignatures : undefined;
+    this.data.oswiadczenieWeksel = optionsGroup.StatementListESignaturesBillOfExchange.enabled ? optionsGroup.StatementListESignaturesBillOfExchange : undefined;
+    this.data.wyciag = optionsGroup.MKB.enabled ? { bookNumber: optionsGroup.MKB.bookNumber } : undefined;
+
+    this.onDocumentTypeChange();
+  }
+
+  save(): void {
+    this.updateDataFromForm();
+    this.clientService.saveData(this.data).subscribe();
+  }
+
+  download(): void {
+    this.updateDataFromForm();
+    this.clientService.downloadDocuments(this.data).subscribe();
+  }
+}
+
+
+// ===============================
 // client-contracts.component.html
 // ===============================
 
