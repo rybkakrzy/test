@@ -1,3 +1,466 @@
+// ===============================
+// models.ts
+// ===============================
+
+export interface CmkowirBGKModel {
+  kkf: string;
+  currentDate: Date;
+  client: Client;
+  contracts: Contract[];
+  selectedContract: Contract;
+
+  oswiadczenie?: DocumentFormDetail;
+  oswiadczenieWeksel?: DocumentFormDetail;
+  wyciag?: WyciagDetail;
+}
+
+export interface Client {
+  name: string;
+  clientNumber: string;
+  regon: string;
+  nip: string;
+  postalCode: string;
+  street: string;
+  city: string;
+}
+
+export interface Contract {
+  facility: string;
+  contractNumber: string;
+  accountNumber: string;
+}
+
+export interface DocumentSignatureDates {
+  sameDay: boolean;
+  sameDayDates?: {
+    electronicDate: string;
+    manualDate: string;
+  };
+  separateDates?: {
+    application: {
+      electronicDate: string;
+      manualDate: string;
+    };
+    form: {
+      electronicDate: string;
+      manualDate: string;
+    };
+  };
+}
+
+export interface Annex extends DocumentSignatureDates {
+  annexNumber: string;
+}
+
+export interface DocumentFormDetail extends DocumentSignatureDates {
+  hasAnnexes?: boolean;
+  annexes?: Annex[];
+}
+
+export interface WyciagDetail {
+  bookNumber: string;
+}
+
+
+// ===============================
+// client.service.ts
+// ===============================
+
+import { Injectable } from '@angular/core';
+import { Observable, of } from 'rxjs';
+import { CmkowirBGKModel } from './models';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class ClientService {
+  getClientData(): Observable<CmkowirBGKModel> {
+    return of({
+      kkf: 'KKF-2025-07',
+      currentDate: new Date(),
+      client: {
+        name: 'Jan Kowalski',
+        clientNumber: 'C123456',
+        regon: '123456789',
+        nip: '9876543210',
+        postalCode: '00-123',
+        street: 'ul. Przykładowa 1',
+        city: 'Warszawa'
+      },
+      contracts: [
+        {
+          facility: 'Obiekt A',
+          contractNumber: 'U001',
+          accountNumber: '12345678901234567890123456'
+        },
+        {
+          facility: 'Obiekt B',
+          contractNumber: 'U002',
+          accountNumber: '23456789012345678901234567'
+        }
+      ],
+      selectedContract: {
+        facility: 'Obiekt A',
+        contractNumber: 'U001',
+        accountNumber: '12345678901234567890123456'
+      },
+      oswiadczenie: undefined,
+      oswiadczenieWeksel: undefined,
+      wyciag: undefined
+    });
+  }
+
+  saveData(model: CmkowirBGKModel): Observable<void> {
+    console.log('Zapisuję dane do API:', model);
+    return of();
+  }
+
+  downloadDocuments(model: CmkowirBGKModel): Observable<void> {
+    console.log('Pobieram dokumenty na podstawie danych:', model);
+    return of();
+  }
+}
+
+
+// ===============================
+// DTO .NET (C#)
+// ===============================
+
+public class CmkowirBGKModel
+{
+    public string Kkf { get; set; }
+    public DateTime CurrentDate { get; set; }
+    public Client Client { get; set; }
+    public List<Contract> Contracts { get; set; }
+    public Contract SelectedContract { get; set; }
+
+    public DocumentFormDetail Oswiadczenie { get; set; }
+    public DocumentFormDetail OswiadczenieWeksel { get; set; }
+    public WyciagDetail Wyciag { get; set; }
+}
+
+public class Client
+{
+    public string Name { get; set; }
+    public string ClientNumber { get; set; }
+    public string Regon { get; set; }
+    public string Nip { get; set; }
+    public string PostalCode { get; set; }
+    public string Street { get; set; }
+    public string City { get; set; }
+}
+
+public class Contract
+{
+    public string Facility { get; set; }
+    public string ContractNumber { get; set; }
+    public string AccountNumber { get; set; }
+}
+
+public class DocumentFormDetail
+{
+    public bool SameDay { get; set; }
+    public SameDayDates SameDayDates { get; set; }
+    public SeparateDates SeparateDates { get; set; }
+    public bool? HasAnnexes { get; set; }
+    public List<Annex> Annexes { get; set; }
+}
+
+public class SameDayDates
+{
+    public string ElectronicDate { get; set; }
+    public string ManualDate { get; set; }
+}
+
+public class SeparateDates
+{
+    public SignatureDates Application { get; set; }
+    public SignatureDates Form { get; set; }
+}
+
+public class SignatureDates
+{
+    public string ElectronicDate { get; set; }
+    public string ManualDate { get; set; }
+}
+
+public class Annex
+{
+    public string AnnexNumber { get; set; }
+    public bool SameDay { get; set; }
+    public SameDayDates SameDayDates { get; set; }
+    public SeparateDates SeparateDates { get; set; }
+}
+
+public class WyciagDetail
+{
+    public string BookNumber { get; set; }
+}
+
+
+// ===============================
+// client-contracts.component.ts
+// ===============================
+
+import { Component, OnInit } from '@angular/core';
+import { FormArray, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ClientService } from './client.service';
+import { CmkowirBGKModel, DocumentFormDetail, WyciagDetail } from './models';
+
+@Component({
+  selector: 'app-client-contracts',
+  templateUrl: './client-contracts.component.html',
+  styleUrls: ['./client-contracts.component.scss']
+})
+export class ClientContractsComponent implements OnInit {
+  model!: CmkowirBGKModel;
+  formGroup!: FormGroup;
+  selectedContractIndex = -1;
+  readonly optionKeys = ['oswiadczenie', 'oswiadczenieWeksel', 'wyciag'];
+
+  constructor(private clientService: ClientService, private fb: FormBuilder) {}
+
+  ngOnInit(): void {
+    this.clientService.getClientData().subscribe(data => {
+      this.model = data;
+
+      const contractIndex = this.model.contracts.findIndex(
+        c => c.contractNumber === this.model.selectedContract.contractNumber
+      );
+      this.selectedContractIndex = contractIndex >= 0 ? contractIndex : -1;
+
+      this.initForm();
+    });
+  }
+
+  initForm(): void {
+    this.formGroup = this.fb.group({
+      options: this.fb.group({
+        oswiadczenie: this.buildOptionFormGroup(this.model.oswiadczenie),
+        oswiadczenieWeksel: this.buildOptionFormGroup(this.model.oswiadczenieWeksel),
+        wyciag: this.fb.group({
+          enabled: [!!this.model.wyciag?.bookNumber],
+          bookNumber: [this.model.wyciag?.bookNumber ?? '']
+        })
+      })
+    });
+  }
+
+  buildOptionFormGroup(data?: DocumentFormDetail): FormGroup {
+    return this.fb.group({
+      enabled: [!!data],
+      sameDay: [data?.sameDay ?? true],
+      sameDayDates: this.fb.group({
+        electronicDate: [data?.sameDayDates?.electronicDate ?? ''],
+        manualDate: [data?.sameDayDates?.manualDate ?? '']
+      }),
+      separateDates: this.fb.group({
+        application: this.fb.group({
+          electronicDate: [data?.separateDates?.application.electronicDate ?? ''],
+          manualDate: [data?.separateDates?.application.manualDate ?? '']
+        }),
+        form: this.fb.group({
+          electronicDate: [data?.separateDates?.form.electronicDate ?? ''],
+          manualDate: [data?.separateDates?.form.manualDate ?? '']
+        })
+      }),
+      hasAnnexes: [data?.hasAnnexes ?? false],
+      annexes: this.fb.array((data?.annexes ?? []).map(a => this.createAnnexForm(a)))
+    });
+  }
+
+  createAnnexForm(data?: any): FormGroup {
+    return this.fb.group({
+      annexNumber: [data?.annexNumber ?? '', Validators.required],
+      sameDay: [data?.sameDay ?? true],
+      sameDayDates: this.fb.group({
+        electronicDate: [data?.sameDayDates?.electronicDate ?? ''],
+        manualDate: [data?.sameDayDates?.manualDate ?? '']
+      }),
+      separateDates: this.fb.group({
+        application: this.fb.group({
+          electronicDate: [data?.separateDates?.application.electronicDate ?? ''],
+          manualDate: [data?.separateDates?.application.manualDate ?? '']
+        }),
+        form: this.fb.group({
+          electronicDate: [data?.separateDates?.form.electronicDate ?? ''],
+          manualDate: [data?.separateDates?.form.manualDate ?? '']
+        })
+      })
+    });
+  }
+
+  getAnnexesArray(optionKey: string): FormArray {
+    return this.formGroup.get(['options', optionKey, 'annexes']) as FormArray;
+  }
+
+  addAnnex(optionKey: string): void {
+    this.getAnnexesArray(optionKey).push(this.createAnnexForm());
+  }
+
+  selectContract(index: number): void {
+    this.selectedContractIndex = index;
+  }
+
+  isOptionEnabled(optionKey: string): boolean {
+    return this.formGroup.get(['options', optionKey, 'enabled'])?.value;
+  }
+
+  updateModelFromForm(): void {
+    const optionsGroup = this.formGroup.get('options')!.value;
+
+    this.model.selectedContract = this.model.contracts[this.selectedContractIndex];
+
+    this.model.oswiadczenie = optionsGroup.oswiadczenie.enabled ? optionsGroup.oswiadczenie : undefined;
+    this.model.oswiadczenieWeksel = optionsGroup.oswiadczenieWeksel.enabled ? optionsGroup.oswiadczenieWeksel : undefined;
+    this.model.wyciag = optionsGroup.wyciag.enabled ? { bookNumber: optionsGroup.wyciag.bookNumber } : undefined;
+  }
+
+  save(): void {
+    this.updateModelFromForm();
+    this.clientService.saveData(this.model).subscribe();
+  }
+
+  download(): void {
+    this.updateModelFromForm();
+    this.clientService.downloadDocuments(this.model).subscribe();
+  }
+}
+
+// ===============================
+// client-contracts.component.html
+// ===============================
+
+<div *ngIf="model">
+  <section>
+    <h2>Dane klienta</h2>
+    <p><strong>Nazwa:</strong> {{ model.client.name }}</p>
+    <p><strong>Numer klienta:</strong> {{ model.client.clientNumber }}</p>
+    <p><strong>REGON:</strong> {{ model.client.regon }}</p>
+    <p><strong>NIP:</strong> {{ model.client.nip }}</p>
+    <p><strong>Kod pocztowy:</strong> {{ model.client.postalCode }}</p>
+    <p><strong>Ulica:</strong> {{ model.client.street }}</p>
+    <p><strong>Miasto:</strong> {{ model.client.city }}</p>
+    <p><strong>KKF:</strong> {{ model.kkf }}</p>
+    <p><strong>Data bieżąca:</strong> {{ model.currentDate | date:'yyyy-MM-dd' }}</p>
+  </section>
+
+  <section *ngIf="model.contracts.length > 0">
+    <h2>Wybierz umowę</h2>
+    <div *ngFor="let contract of model.contracts; let i = index">
+      <label>
+        <input
+          type="radio"
+          name="contract"
+          [checked]="selectedContractIndex === i"
+          (change)="selectContract(i)"
+        />
+        {{ contract.facility }} - {{ contract.contractNumber }} - {{ contract.accountNumber }}
+      </label>
+    </div>
+  </section>
+
+  <form [formGroup]="formGroup">
+    <section *ngIf="selectedContractIndex !== -1">
+      <h3>Wygeneruj dokumenty</h3>
+      <div formGroupName="options">
+        <div *ngFor="let key of optionKeys">
+          <label>
+            <input type="checkbox" [formControlName]="key + '.enabled'" />
+            {{ key === 'oswiadczenie' ? 'Oświadczenie lista e-podpisów' : key === 'oswiadczenieWeksel' ? 'Oświadczenie lista e-podpisów - Weksel' : 'Wyciąg z ksiąg banku' }}
+          </label>
+
+          <!-- Wyciąg -->
+          <div *ngIf="key === 'wyciag' && isOptionEnabled(key)" [formGroupName]="key">
+            <label>
+              Numer księgi:
+              <input type="text" formControlName="bookNumber" />
+            </label>
+          </div>
+
+          <!-- Oświadczenia -->
+          <div *ngIf="key !== 'wyciag' && isOptionEnabled(key)" [formGroupName]="key">
+            <div>
+              <label>
+                <input type="radio" formControlName="sameDay" [value]="true" /> Podpisane tego samego dnia
+              </label>
+              <label>
+                <input type="radio" formControlName="sameDay" [value]="false" /> Podpisane w różnych dniach
+              </label>
+            </div>
+
+            <div *ngIf="formGroup.get(['options', key, 'sameDay'])?.value" formGroupName="sameDayDates">
+              <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
+              <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+            </div>
+
+            <div *ngIf="!formGroup.get(['options', key, 'sameDay'])?.value" formGroupName="separateDates">
+              <h6>Wniosek</h6>
+              <div formGroupName="application">
+                <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
+                <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+              </div>
+              <h6>Formularz</h6>
+              <div formGroupName="form">
+                <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
+                <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+              </div>
+            </div>
+
+            <div>
+              <p><strong>Czy do umowy został sporządzony aneks?</strong></p>
+              <label><input type="radio" formControlName="hasAnnexes" [value]="true" /> Tak</label>
+              <label><input type="radio" formControlName="hasAnnexes" [value]="false" /> Nie</label>
+            </div>
+
+            <div *ngIf="formGroup.get(['options', key, 'hasAnnexes'])?.value">
+              <div formArrayName="annexes">
+                <div *ngFor="let annex of getAnnexesArray(key).controls; let i = index" [formGroupName]="i">
+                  <label>Numer aneksu: <input type="text" formControlName="annexNumber" /></label>
+
+                  <div>
+                    <label><input type="radio" formControlName="sameDay" [value]="true" /> Podpisane tego samego dnia</label>
+                    <label><input type="radio" formControlName="sameDay" [value]="false" /> Podpisane w różnych dniach</label>
+                  </div>
+
+                  <div *ngIf="annex.get('sameDay')?.value" formGroupName="sameDayDates">
+                    <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
+                    <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+                  </div>
+
+                  <div *ngIf="!annex.get('sameDay')?.value" formGroupName="separateDates">
+                    <h6>Wniosek</h6>
+                    <div formGroupName="application">
+                      <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
+                      <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+                    </div>
+                    <h6>Formularz</h6>
+                    <div formGroupName="form">
+                      <label>Data podpisu elektronicznego: <input type="date" formControlName="electronicDate" /></label>
+                      <label>Data podpisu manualnego: <input type="date" formControlName="manualDate" /></label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <button type="button" (click)="addAnnex(key)">Dodaj aneks</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </form>
+
+  <section style="margin-top: 20px">
+    <button (click)="save()">Zapisz</button>
+    <button (click)="download()">Pobierz dokumenty</button>
+  </section>
+</div>
+
+
+
+
+------------------
+
 import { Component } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 
