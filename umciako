@@ -5,7 +5,7 @@
 import { Component, OnInit } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup, Validators, FormControl } from '@angular/forms';
 import { ClientService } from './client.service';
-import { CmkowirBGKModel, DocumentFormDetail, WyciagDetail, BGKDocumentType, MKBComponent } from './models';
+import { CmkowirBGKModel, DocumentFormDetail, WKBDetail, BGKDocumentType, WKBComponent } from './models';
 
 @Component({
   selector: 'app-client-contracts',
@@ -19,7 +19,7 @@ export class ClientContractsComponent implements OnInit {
   readonly optionKeys: BGKDocumentType[] = [
     'StatementListESignatures',
     'StatementListESignaturesBillOfExchange',
-    'MKB'
+    'WKB'
   ];
 
   collapsedAnnexes: { [key: string]: boolean[] } = {};
@@ -44,24 +44,32 @@ export class ClientContractsComponent implements OnInit {
       options: this.fb.group({
         StatementListESignatures: this.buildOptionFormGroup(this.data.oswiadczenie, 'StatementListESignatures'),
         StatementListESignaturesBillOfExchange: this.buildOptionFormGroup(this.data.oswiadczenieWeksel, 'StatementListESignaturesBillOfExchange'),
-        MKB: this.fb.group({
-          enabled: [!!this.data.wyciag?.bookNumber],
-          bookNumber: [this.data.wyciag?.bookNumber ?? ''],
-          components: this.fb.array((this.data.wyciag?.components ?? []).map(item => this.createMKBComponent(item)))
-        })
+        WKB: this.buildWkbFormGroup(this.data.wkb ?? {} as WKBDetail)
       })
     });
   }
 
-  createMKBComponent(item: { name: string; value?: string }): FormGroup {
+  buildWkbFormGroup(data: WKBDetail): FormGroup {
+    return this.fb.group({
+      enabled: [!!data],
+      bookNumber: [data?.bookNumber ?? ''],
+      productName: [data?.productName ?? null],
+      withSubsequentChanges: [data?.withSubsequentChanges ?? false],
+      components: this.fb.array(
+        data?.components?.map(item => this.createWKBComponent(item)) ?? []
+      )
+    });
+  }
+
+  createWKBComponent(item: { name: string; value?: string }): FormGroup {
     return this.fb.group({
       name: [item.name],
       value: [item.value ?? '']
     });
   }
 
-  getMKBComponents(): FormArray {
-    return this.formGroup.get(['options', 'MKB', 'components']) as FormArray;
+  getWKBComponents(): FormArray {
+    return this.formGroup.get(['options', 'WKB', 'components']) as FormArray;
   }
 
   buildOptionFormGroup(data?: DocumentFormDetail, optionKey?: BGKDocumentType): FormGroup {
@@ -96,7 +104,7 @@ export class ClientContractsComponent implements OnInit {
         return 'Oświadczenie lista e-podpisów';
       case 'StatementListESignaturesBillOfExchange':
         return 'Oświadczenie lista e-podpisów - Weksel';
-      case 'MKB':
+      case 'WKB':
         return 'Wyciąg z ksiąg banku';
       default:
         return 'Nieznany typ';
@@ -179,9 +187,11 @@ export class ClientContractsComponent implements OnInit {
 
     this.data.oswiadczenie = optionsGroup.StatementListESignatures.enabled ? optionsGroup.StatementListESignatures : undefined;
     this.data.oswiadczenieWeksel = optionsGroup.StatementListESignaturesBillOfExchange.enabled ? optionsGroup.StatementListESignaturesBillOfExchange : undefined;
-    this.data.wyciag = optionsGroup.MKB.enabled ? {
-      bookNumber: optionsGroup.MKB.bookNumber,
-      components: optionsGroup.MKB.components
+    this.data.wkb = optionsGroup.WKB.enabled ? {
+      bookNumber: optionsGroup.WKB.bookNumber,
+      productName: optionsGroup.WKB.productName,
+      withSubsequentChanges: optionsGroup.WKB.withSubsequentChanges,
+      components: optionsGroup.WKB.components
     } : undefined;
 
     this.onDocumentTypeChange();
@@ -197,3 +207,113 @@ export class ClientContractsComponent implements OnInit {
     this.clientService.downloadDocuments(this.data).subscribe();
   }
 }
+
+-----------------------
+
+<div *ngIf="isOptionEnabled('WKB')" formGroupName="WKB" class="mt-4">
+  <div class="row mb-3">
+    <div class="col-md-4">
+      <label>Numer księgi:</label>
+      <input type="text" formControlName="bookNumber" class="form-control" />
+    </div>
+    <div class="col-md-4">
+      <label>Nazwa produktu:</label>
+      <input type="text" formControlName="productName" class="form-control" />
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+      <div class="form-check">
+        <input
+          type="checkbox"
+          class="form-check-input"
+          id="withSubsequentChanges"
+          formControlName="withSubsequentChanges"
+        />
+        <label for="withSubsequentChanges" class="form-check-label">
+          Umowa z późniejszymi zmianami
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <h5 class="mb-2">Na wierzytelność składa się:</h5>
+  <div formArrayName="components">
+    <div
+      *ngFor="let group of getWKBComponents().controls; let i = index"
+      [formGroupName]="i"
+      class="row mb-2"
+    >
+      <div class="col-md-4">
+        <label class="form-label">
+          {{ group.get('name')?.value }}
+        </label>
+      </div>
+      <div class="col-md-8">
+        <input type="text" formControlName="value" class="form-control" />
+      </div>
+    </div>
+  </div>
+</div>
+
+-------------------------
+
+
+
+export interface CmkowirBGKModel {
+  kkf: string;
+  currentDate: string;
+  client: Client;
+  contracts: Contract[];
+  selectedContract?: Contract;
+  oswiadczenie?: DocumentFormDetail;
+  oswiadczenieWeksel?: DocumentFormDetail;
+  selectedDocumentTypes: BGKDocumentType[];
+  wkb?: WKBDetail;
+}
+
+export interface WKBDetail {
+  bookNumber: string;
+  productName?: string;
+  withSubsequentChanges?: boolean;
+  components: WKBComponent[];
+}
+
+export interface WKBComponent {
+  name: string;
+  value?: string;
+}
+
+
+
+//////////////////////
+
+
+
+public class CmkowirBGKModel
+{
+    public string Kkf { get; set; }
+    public DateTime CurrentDate { get; set; }
+    public ClientDto Client { get; set; }
+    public List<ContractDto> Contracts { get; set; }
+    public ContractDto SelectedContract { get; set; }
+    public DocumentFormDetailDto Oswiadczenie { get; set; }
+    public DocumentFormDetailDto OswiadczenieWeksel { get; set; }
+    public List<BGKDocumentType> SelectedDocumentTypes { get; set; }
+    public WKBDetailDto WKB { get; set; }
+}
+
+public class WKBDetailDto
+{
+    public string BookNumber { get; set; }
+    public string ProductName { get; set; }
+    public bool WithSubsequentChanges { get; set; }
+    public List<WKBComponentDto> Components { get; set; }
+}
+
+public class WKBComponentDto
+{
+    public string Name { get; set; }
+    public string Value { get; set; }
+}
+
+
+
