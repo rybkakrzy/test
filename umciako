@@ -1,57 +1,3 @@
- Zmiany w logice (zrobione)
-Model MKBComponent zawiera teraz:
-
-name: string – identyfikator komponentu,
-
-value: string – wartość wpisana przez użytkownika,
-
-selected: boolean – czy checkbox zaznaczony.
-
-Dane z backendu są zaczytywane, jeśli istnieją (this.data.wyciag?.components), inaczej używane są domyślne tytuły.
-
-FormGroup dla każdego składnika budowany z name, value, selected.
-
-updateDataFromForm() uwzględnia components przy serializacji danych do API.
-
-🛠 Co musisz jeszcze dodać w HTML?
-W client-contracts.component.html, w sekcji MKB, dodaj:
-
-html
-Kopiuj
-Edytuj
-<div *ngIf="isOptionEnabled('MKB')">
-  <h4>Na wierzytelność składa się:</h4>
-  <div formArrayName="components">
-    <div *ngFor="let group of getMKBComponents().controls; let i = index" [formGroupName]="i" class="flex gap-2 items-center mb-2">
-      <input type="checkbox" formControlName="selected" />
-      <input type="text" formControlName="value" [placeholder]="group.get('name')?.value" class="flex-1" />
-    </div>
-  </div>
-</div>
-🧱 Model C# po stronie backendu
-W DTO zdefiniuj:
-
-csharp
-Kopiuj
-Edytuj
-public class MKBComponentDto
-{
-    public string Name { get; set; }
-    public string? Value { get; set; }
-    public bool Selected { get; set; }
-}
-
-public class WyciagDetail
-{
-    public string BookNumber { get; set; }
-    public List<MKBComponentDto> Components { get; set; }
-}
-
-
------------------
-
-
-
 // ===============================
 // client-contracts.component.ts
 // ===============================
@@ -78,13 +24,6 @@ export class ClientContractsComponent implements OnInit {
 
   collapsedAnnexes: { [key: string]: boolean[] } = {};
 
-  readonly defaultMKBItems: MKBComponent[] = [
-    { name: 'Kapitał' },
-    { name: 'Odsetki umowne' },
-    { name: 'Odsetki karne' },
-    { name: 'Koszty windykacyjne' }
-  ];
-
   constructor(private clientService: ClientService, private fb: FormBuilder) {}
 
   ngOnInit(): void {
@@ -101,10 +40,6 @@ export class ClientContractsComponent implements OnInit {
   }
 
   initForm(): void {
-    const componentsSource = this.data.wyciag?.components?.length
-      ? this.data.wyciag.components
-      : this.defaultMKBItems;
-
     this.formGroup = this.fb.group({
       options: this.fb.group({
         StatementListESignatures: this.buildOptionFormGroup(this.data.oswiadczenie, 'StatementListESignatures'),
@@ -112,24 +47,17 @@ export class ClientContractsComponent implements OnInit {
         MKB: this.fb.group({
           enabled: [!!this.data.wyciag?.bookNumber],
           bookNumber: [this.data.wyciag?.bookNumber ?? ''],
-          components: this.fb.array(componentsSource.map(item => this.createMKBComponent(item)))
+          components: this.fb.array((this.data.wyciag?.components ?? []).map(item => this.createMKBComponent(item)))
         })
       })
     });
   }
 
-  createMKBComponent(item: { name: string; value?: string; selected?: boolean }): FormGroup {
-    const group = this.fb.group({
+  createMKBComponent(item: { name: string; value?: string }): FormGroup {
+    return this.fb.group({
       name: [item.name],
-      value: [item.value ?? ''],
-      selected: [item.selected ?? !!item.value]
+      value: [item.value ?? '']
     });
-
-    group.get('value')?.valueChanges.subscribe(val => {
-      group.get('selected')?.setValue(!!val, { emitEvent: false });
-    });
-
-    return group;
   }
 
   getMKBComponents(): FormArray {
