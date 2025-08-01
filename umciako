@@ -1,5 +1,42 @@
 private updateDataFromForm(): void {
   const fixDate = (val: any): any => {
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(val)) {
+      const date = new Date(val);
+      const localDate = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+      // format yyyy-mm-dd
+      return localDate.toISOString().split('T')[0];
+    }
+
+    return val;
+  };
+
+  const walkAndFixDates = (obj: any): any => {
+    if (Array.isArray(obj)) {
+      return obj.map(item => walkAndFixDates(item));
+    }
+
+    if (typeof obj === 'object' && obj !== null) {
+      const fixedObj: any = {};
+      for (const key of Object.keys(obj)) {
+        const val = obj[key];
+        fixedObj[key] = (typeof val === 'object' && val !== null)
+          ? walkAndFixDates(val)
+          : fixDate(val);
+      }
+      return fixedObj;
+    }
+
+    return obj;
+  };
+
+  this.data = walkAndFixDates(this.data);
+}
+
+
+
+
+private updateDataFromForm(): void {
+  const fixDate = (val: any): any => {
     if (typeof val === 'string' && val.endsWith('Z')) {
       const d = new Date(val);
       // Tworzymy lokalną datę tylko z komponentu daty (bez godziny)
