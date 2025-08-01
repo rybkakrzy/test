@@ -1,3 +1,26 @@
+
+// Możesz trzymać to jako prywatną metodę w komponencie
+private walkAndFixDatesInForm(formGroup: FormGroup | FormArray): void {
+  Object.keys(formGroup.controls).forEach((key) => {
+    const control = formGroup.get(key);
+
+    if (!control) return;
+
+    if (control instanceof FormGroup || control instanceof FormArray) {
+      this.walkAndFixDatesInForm(control);
+    } else if (control instanceof FormControl) {
+      const value = control.value;
+
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+        const date = new Date(value);
+        const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        control.setValue(localDate, { emitEvent: false });
+      }
+    }
+  });
+}
+
+
 private updateDataFromForm(): void {
   const fixDate = (val: any): any => {
     if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(val)) {
