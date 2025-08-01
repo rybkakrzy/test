@@ -1,3 +1,46 @@
+private updateDataFromForm(): void {
+  const fixDate = (val: any): any => {
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(val)) {
+      const localDate = new Date(val);
+      localDate.setMinutes(localDate.getMinutes() + localDate.getTimezoneOffset());
+      return localDate.toISOString().split('T')[0]; // np. "2025-08-22"
+    }
+
+    if (val instanceof Date) {
+      const localDate = new Date(val);
+      localDate.setMinutes(localDate.getMinutes() + localDate.getTimezoneOffset());
+      return localDate.toISOString().split('T')[0];
+    }
+
+    return val;
+  };
+
+  const walkAndFixDates = (obj: any): any => {
+    if (Array.isArray(obj)) {
+      return obj.map(item => walkAndFixDates(item));
+    }
+
+    if (typeof obj === 'object' && obj !== null) {
+      const fixedObj: any = {};
+      Object.keys(obj).forEach(key => {
+        const value = obj[key];
+        fixedObj[key] = (typeof value === 'object' && value !== null)
+          ? walkAndFixDates(value)
+          : fixDate(value);
+      });
+      return fixedObj;
+    }
+
+    return obj;
+  };
+
+  // Zakładam że `this.data` to Twój główny model
+  this.data = walkAndFixDates(this.data);
+}
+
+
+
+
 // ===============================
 // client-contracts.component.ts
 // ===============================
