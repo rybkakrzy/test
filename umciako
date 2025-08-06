@@ -1,467 +1,125 @@
+using OfficeOpenXml;
+using System.Globalization;
 
-// Możesz trzymać to jako prywatną metodę w komponencie
-private walkAndFixDatesInForm(formGroup: FormGroup | FormArray): void {
-  Object.keys(formGroup.controls).forEach((key) => {
-    const control = formGroup.get(key);
-
-    if (!control) return;
-
-    if (control instanceof FormGroup || control instanceof FormArray) {
-      this.walkAndFixDatesInForm(control);
-    } else if (control instanceof FormControl) {
-      const value = control.value;
-
-      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
-        const date = new Date(value);
-        const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-        control.setValue(localDate, { emitEvent: false });
-      }
-    }
-  });
-}
-
-
-private updateDataFromForm(): void {
-  const fixDate = (val: any): any => {
-    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(val)) {
-      const date = new Date(val);
-      const localDate = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-      // format yyyy-mm-dd
-      return localDate.toISOString().split('T')[0];
-    }
-
-    return val;
-  };
-
-  const walkAndFixDates = (obj: any): any => {
-    if (Array.isArray(obj)) {
-      return obj.map(item => walkAndFixDates(item));
-    }
-
-    if (typeof obj === 'object' && obj !== null) {
-      const fixedObj: any = {};
-      for (const key of Object.keys(obj)) {
-        const val = obj[key];
-        fixedObj[key] = (typeof val === 'object' && val !== null)
-          ? walkAndFixDates(val)
-          : fixDate(val);
-      }
-      return fixedObj;
-    }
-
-    return obj;
-  };
-
-  this.data = walkAndFixDates(this.data);
-}
-
-
-
-
-private updateDataFromForm(): void {
-  const fixDate = (val: any): any => {
-    if (typeof val === 'string' && val.endsWith('Z')) {
-      const d = new Date(val);
-      // Tworzymy lokalną datę tylko z komponentu daty (bez godziny)
-      const corrected = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-      return corrected.toISOString().split('T')[0]; // YYYY-MM-DD
-    }
-
-    if (val instanceof Date) {
-      const corrected = new Date(val.getFullYear(), val.getMonth(), val.getDate());
-      return corrected.toISOString().split('T')[0];
-    }
-
-    return val;
-  };
-
-  const walkAndFixDates = (obj: any): any => {
-    if (Array.isArray(obj)) {
-      return obj.map(item => walkAndFixDates(item));
-    }
-
-    if (typeof obj === 'object' && obj !== null) {
-      const fixedObj: any = {};
-      for (const key of Object.keys(obj)) {
-        const value = obj[key];
-        if (value instanceof Date || (typeof value === 'string' && value.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/))) {
-          fixedObj[key] = fixDate(value);
-        } else {
-          fixedObj[key] = walkAndFixDates(value);
-        }
-      }
-      return fixedObj;
-    }
-
-    return obj;
-  };
-
-  this.data = walkAndFixDates(this.data);
-}
-
-
-
------------------------
-
-private updateDataFromForm(): void {
-  const fixDate = (val: any): any => {
-    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(val)) {
-      const localDate = new Date(val);
-      localDate.setMinutes(localDate.getMinutes() + localDate.getTimezoneOffset());
-      return localDate.toISOString().split('T')[0]; // np. "2025-08-22"
-    }
-
-    if (val instanceof Date) {
-      const localDate = new Date(val);
-      localDate.setMinutes(localDate.getMinutes() + localDate.getTimezoneOffset());
-      return localDate.toISOString().split('T')[0];
-    }
-
-    return val;
-  };
-
-  const walkAndFixDates = (obj: any): any => {
-    if (Array.isArray(obj)) {
-      return obj.map(item => walkAndFixDates(item));
-    }
-
-    if (typeof obj === 'object' && obj !== null) {
-      const fixedObj: any = {};
-      Object.keys(obj).forEach(key => {
-        const value = obj[key];
-        fixedObj[key] = (typeof value === 'object' && value !== null)
-          ? walkAndFixDates(value)
-          : fixDate(value);
-      });
-      return fixedObj;
-    }
-
-    return obj;
-  };
-
-  // Zakładam że `this.data` to Twój główny model
-  this.data = walkAndFixDates(this.data);
-}
-
-
-
-
-// ===============================
-// client-contracts.component.ts
-// ===============================
-
-import { Component, OnInit } from '@angular/core';
-import { FormArray, FormBuilder, FormGroup, Validators, FormControl } from '@angular/forms';
-import { ClientService } from './client.service';
-import { CmkowirBGKModel, DocumentFormDetail, WKBDetail, BGKDocumentType, WKBComponent } from './models';
-
-@Component({
-  selector: 'app-client-contracts',
-  templateUrl: './client-contracts.component.html',
-  styleUrls: ['./client-contracts.component.scss']
-})
-export class ClientContractsComponent implements OnInit {
-  data!: CmkowirBGKModel;
-  formGroup!: FormGroup;
-  selectedContractIndex = -1;
-  readonly optionKeys: BGKDocumentType[] = [
-    'StatementListESignatures',
-    'StatementListESignaturesBillOfExchange',
-    'WKB'
-  ];
-
-  collapsedAnnexes: { [key: string]: boolean[] } = {};
-
-  constructor(private clientService: ClientService, private fb: FormBuilder) {}
-
-  ngOnInit(): void {
-    this.clientService.getClientData().subscribe(data => {
-      this.data = data;
-
-      const contractIndex = this.data.contracts.findIndex(
-        c => c.contractNumber === this.data.selectedContract?.contractNumber
-      );
-      this.selectedContractIndex = contractIndex >= 0 ? contractIndex : -1;
-
-      this.initForm();
-    });
-  }
-
-  initForm(): void {
-    this.formGroup = this.fb.group({
-      options: this.fb.group({
-        StatementListESignatures: this.buildOptionFormGroup(this.data.oswiadczenie, 'StatementListESignatures'),
-        StatementListESignaturesBillOfExchange: this.buildOptionFormGroup(this.data.oswiadczenieWeksel, 'StatementListESignaturesBillOfExchange'),
-        WKB: this.buildWkbFormGroup(this.data.wkb ?? {} as WKBDetail)
-      })
-    });
-  }
-
-  buildWkbFormGroup(data: WKBDetail): FormGroup {
-    return this.fb.group({
-      enabled: [!!data],
-      bookNumber: [data?.bookNumber ?? ''],
-      productName: [data?.productName ?? null],
-      withSubsequentChanges: [data?.withSubsequentChanges ?? false],
-      components: this.fb.array(
-        data?.components?.map(item => this.createWKBComponent(item)) ?? []
-      )
-    });
-  }
-
-  createWKBComponent(item: { name: string; value?: string }): FormGroup {
-    return this.fb.group({
-      name: [item.name],
-      value: [item.value ?? '']
-    });
-  }
-
-  getWKBComponents(): FormArray {
-    return this.formGroup.get(['options', 'WKB', 'components']) as FormArray;
-  }
-
-  buildOptionFormGroup(data?: DocumentFormDetail, optionKey?: BGKDocumentType): FormGroup {
-    const annexes = (data?.annexes ?? []).map((a, index) => this.createAnnexForm(a, index + 1));
-    this.collapsedAnnexes[optionKey!] = annexes.map(() => false);
-
-    return this.fb.group({
-      enabled: [!!data],
-      sameDay: [data?.sameDay ?? true],
-      sameDayDates: this.fb.group({
-        electronicDate: [data?.sameDayDates?.electronicDate ?? ''],
-        manualDate: [data?.sameDayDates?.manualDate ?? '']
-      }),
-      separateDates: this.fb.group({
-        application: this.fb.group({
-          electronicDate: [data?.separateDates?.application.electronicDate ?? ''],
-          manualDate: [data?.separateDates?.application.manualDate ?? '']
-        }),
-        form: this.fb.group({
-          electronicDate: [data?.separateDates?.form.electronicDate ?? ''],
-          manualDate: [data?.separateDates?.form.manualDate ?? '']
-        })
-      }),
-      hasAnnexes: [data?.hasAnnexes ?? false],
-      annexes: this.fb.array(annexes)
-    });
-  }
-
-  getDocumentLabel(type: BGKDocumentType): string {
-    switch (type) {
-      case 'StatementListESignatures':
-        return 'Oświadczenie lista e-podpisów';
-      case 'StatementListESignaturesBillOfExchange':
-        return 'Oświadczenie lista e-podpisów - Weksel';
-      case 'WKB':
-        return 'Wyciąg z ksiąg banku';
-      default:
-        return 'Nieznany typ';
-    }
-  }
-
-  createAnnexForm(data?: any, index?: number): FormGroup {
-    return this.fb.group({
-      annexNumber: [data?.annexNumber ?? `ANEKS-${index ?? ''}`, Validators.required],
-      sameDay: [data?.sameDay ?? true],
-      sameDayDates: this.fb.group({
-        electronicDate: [data?.sameDayDates?.electronicDate ?? ''],
-        manualDate: [data?.sameDayDates?.manualDate ?? '']
-      }),
-      separateDates: this.fb.group({
-        application: this.fb.group({
-          electronicDate: [data?.separateDates?.application.electronicDate ?? ''],
-          manualDate: [data?.separateDates?.application.manualDate ?? '']
-        }),
-        form: this.fb.group({
-          electronicDate: [data?.separateDates?.form.electronicDate ?? ''],
-          manualDate: [data?.separateDates?.form.manualDate ?? '']
-        })
-      })
-    });
-  }
-
-  getAnnexesArray(optionKey: BGKDocumentType): FormArray {
-    return this.formGroup.get(['options', optionKey, 'annexes']) as FormArray;
-  }
-
-  addAnnex(optionKey: BGKDocumentType): void {
-    const annexArray = this.getAnnexesArray(optionKey);
-    annexArray.push(this.createAnnexForm(undefined, annexArray.length + 1));
-    this.collapsedAnnexes[optionKey].push(false);
-  }
-
-  removeAnnex(optionKey: BGKDocumentType, index: number): void {
-    const annexArray = this.getAnnexesArray(optionKey);
-    annexArray.removeAt(index);
-    this.collapsedAnnexes[optionKey].splice(index, 1);
-
-    annexArray.controls.forEach((control, i) => {
-      control.get('annexNumber')?.setValue(`ANEKS-${i + 1}`);
-    });
-  }
-
-  toggleAnnexCollapse(optionKey: BGKDocumentType, index: number): void {
-    this.collapsedAnnexes[optionKey][index] = !this.collapsedAnnexes[optionKey][index];
-  }
-
-  editAnnex(optionKey: BGKDocumentType, index: number): void {
-    const annex = this.getAnnexesArray(optionKey).at(index);
-    (annex as any).markAllAsTouched();
-  }
-
-  selectContract(index: number): void {
-    this.selectedContractIndex = index;
-    this.data.selectedContract = this.data.contracts[index];
-    this.initForm();
-  }
-
-  resetSelectedContract(): void {
-    this.selectedContractIndex = -1;
-    this.data.selectedContract = undefined;
-    this.initForm();
-  }
-
-  isOptionEnabled(optionKey: BGKDocumentType): boolean {
-    return this.formGroup.get(['options', optionKey, 'enabled'])?.value;
-  }
-
-  onDocumentTypeChange(): void {
-    const optionsGroup = this.formGroup.get('options') as FormGroup;
-    this.data.selectedDocumentTypes = this.optionKeys.filter(key => optionsGroup.get([key, 'enabled'])?.value);
-  }
-
-  updateDataFromForm(): void {
-    const optionsGroup = this.formGroup.get('options')!.value;
-
-    this.data.oswiadczenie = optionsGroup.StatementListESignatures.enabled ? optionsGroup.StatementListESignatures : undefined;
-    this.data.oswiadczenieWeksel = optionsGroup.StatementListESignaturesBillOfExchange.enabled ? optionsGroup.StatementListESignaturesBillOfExchange : undefined;
-    this.data.wkb = optionsGroup.WKB.enabled ? {
-      bookNumber: optionsGroup.WKB.bookNumber,
-      productName: optionsGroup.WKB.productName,
-      withSubsequentChanges: optionsGroup.WKB.withSubsequentChanges,
-      components: optionsGroup.WKB.components
-    } : undefined;
-
-    this.onDocumentTypeChange();
-  }
-
-  save(): void {
-    this.updateDataFromForm();
-    this.clientService.saveData(this.data).subscribe();
-  }
-
-  download(): void {
-    this.updateDataFromForm();
-    this.clientService.downloadDocuments(this.data).subscribe();
-  }
-}
-
------------------------
-
-<div *ngIf="isOptionEnabled('WKB')" formGroupName="WKB" class="mt-4">
-  <div class="row mb-3">
-    <div class="col-md-4">
-      <label>Numer księgi:</label>
-      <input type="text" formControlName="bookNumber" class="form-control" />
-    </div>
-    <div class="col-md-4">
-      <label>Nazwa produktu:</label>
-      <input type="text" formControlName="productName" class="form-control" />
-    </div>
-    <div class="col-md-4 d-flex align-items-end">
-      <div class="form-check">
-        <input
-          type="checkbox"
-          class="form-check-input"
-          id="withSubsequentChanges"
-          formControlName="withSubsequentChanges"
-        />
-        <label for="withSubsequentChanges" class="form-check-label">
-          Umowa z późniejszymi zmianami
-        </label>
-      </div>
-    </div>
-  </div>
-
-  <h5 class="mb-2">Na wierzytelność składa się:</h5>
-  <div formArrayName="components">
-    <div
-      *ngFor="let group of getWKBComponents().controls; let i = index"
-      [formGroupName]="i"
-      class="row mb-2"
-    >
-      <div class="col-md-4">
-        <label class="form-label">
-          {{ group.get('name')?.value }}
-        </label>
-      </div>
-      <div class="col-md-8">
-        <input type="text" formControlName="value" class="form-control" />
-      </div>
-    </div>
-  </div>
-</div>
-
--------------------------
-
-
-
-export interface CmkowirBGKModel {
-  kkf: string;
-  currentDate: string;
-  client: Client;
-  contracts: Contract[];
-  selectedContract?: Contract;
-  oswiadczenie?: DocumentFormDetail;
-  oswiadczenieWeksel?: DocumentFormDetail;
-  selectedDocumentTypes: BGKDocumentType[];
-  wkb?: WKBDetail;
-}
-
-export interface WKBDetail {
-  bookNumber: string;
-  productName?: string;
-  withSubsequentChanges?: boolean;
-  components: WKBComponent[];
-}
-
-export interface WKBComponent {
-  name: string;
-  value?: string;
-}
-
-
-
-//////////////////////
-
-
-
-public class CmkowirBGKModel
+public class ExcelImporter
 {
-    public string Kkf { get; set; }
-    public DateTime CurrentDate { get; set; }
-    public ClientDto Client { get; set; }
-    public List<ContractDto> Contracts { get; set; }
-    public ContractDto SelectedContract { get; set; }
-    public DocumentFormDetailDto Oswiadczenie { get; set; }
-    public DocumentFormDetailDto OswiadczenieWeksel { get; set; }
-    public List<BGKDocumentType> SelectedDocumentTypes { get; set; }
-    public WKBDetailDto WKB { get; set; }
+    // Wymaga dodania NuGet: EPPlus
+    public BalanceDocument ReadBalanceDocument(string excelFilePath)
+    {
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+        using var package = new ExcelPackage(new FileInfo(excelFilePath));
+        var worksheet = package.Workbook.Worksheets[0]; // Zakładam pierwszy arkusz
+
+        var doc = new BalanceDocument
+        {
+            DocumentId = worksheet.Cells["B3"].Text,
+            BalanceAtDate = DateTime.ParseExact(worksheet.Cells["K1"].Text, "yyyy-MM-dd", CultureInfo.InvariantCulture),
+            TotalCapital = ParseDecimal(worksheet.Cells["C5"].Text),
+            DueCapital = ParseDecimal(worksheet.Cells["D5"].Text),
+            ContractualInterest = ParseDecimal(worksheet.Cells["E5"].Text),
+            DueInterest = ParseDecimal(worksheet.Cells["F5"].Text),
+            DefaultInterest = ParseDecimal(worksheet.Cells["G5"].Text),
+            FeesOrCommissions = ParseDecimal(worksheet.Cells["H5"].Text),
+            TotalRepaymentAmount = ParseDecimal(worksheet.Cells["I5"].Text),
+            Currency = worksheet.Cells["J5"].Text,
+            DueDate = DateTime.ParseExact(worksheet.Cells["K5"].Text, "yyyy-MM-dd", CultureInfo.InvariantCulture)
+        };
+
+        return doc;
+    }
+
+    private decimal ParseDecimal(string input)
+    {
+        // Umożliwia parsowanie polskich liczb z przecinkiem
+        return decimal.Parse(input, NumberStyles.Any, new CultureInfo("pl-PL"));
+    }
 }
 
-public class WKBDetailDto
+
+public class BalanceDocument
 {
-    public string BookNumber { get; set; }
-    public string ProductName { get; set; }
-    public bool WithSubsequentChanges { get; set; }
-    public List<WKBComponentDto> Components { get; set; }
+    // ID dokumentu
+    public string DocumentId { get; set; }
+
+    // Saldo na dzień
+    public DateTime BalanceAtDate { get; set; }
+
+    // Kapitał ogółem
+    public decimal TotalCapital { get; set; }
+
+    // W tym kapitał wymagalny
+    public decimal DueCapital { get; set; }
+
+    // Odsetki umowne
+    public decimal ContractualInterest { get; set; }
+
+    // W tym odsetki wymagalne
+    public decimal DueInterest { get; set; }
+
+    // Odsetki za zwłokę
+    public decimal DefaultInterest { get; set; }
+
+    // Opłaty / prowizje
+    public decimal FeesOrCommissions { get; set; }
+
+    // Suma do spłaty ogółem
+    public decimal TotalRepaymentAmount { get; set; }
+
+    // Waluta
+    public string Currency { get; set; }
+
+    // Data wymagalności
+    public DateTime DueDate { get; set; }
 }
 
-public class WKBComponentDto
+
+
+
+using OfficeOpenXml;
+using System.Globalization;
+
+public class ExcelImporter
 {
-    public string Name { get; set; }
-    public string Value { get; set; }
+    public BalanceDocument ReadBalanceDocument(byte[] excelContent)
+    {
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+        using var stream = new MemoryStream(excelContent);
+        using var package = new ExcelPackage(stream);
+        var worksheet = package.Workbook.Worksheets[0]; // Zakładamy pierwszy arkusz
+
+        var doc = new BalanceDocument
+        {
+            DocumentId = worksheet.Cells["B3"].Text,
+            BalanceAtDate = ParseDate(worksheet.Cells["K1"].Text),
+            TotalCapital = ParseDecimal(worksheet.Cells["C5"].Text),
+            DueCapital = ParseDecimal(worksheet.Cells["D5"].Text),
+            ContractualInterest = ParseDecimal(worksheet.Cells["E5"].Text),
+            DueInterest = ParseDecimal(worksheet.Cells["F5"].Text),
+            DefaultInterest = ParseDecimal(worksheet.Cells["G5"].Text),
+            FeesOrCommissions = ParseDecimal(worksheet.Cells["H5"].Text),
+            TotalRepaymentAmount = ParseDecimal(worksheet.Cells["I5"].Text),
+            Currency = worksheet.Cells["J5"].Text,
+            DueDate = ParseDate(worksheet.Cells["K5"].Text)
+        };
+
+        return doc;
+    }
+
+    private decimal ParseDecimal(string input)
+    {
+        // Obsługa np. 27 114,64 lub 5388,85 (Excel PL format)
+        var normalized = input?.Replace("\u00A0", ""); // usuń spacje niełamiące (Excel często je używa)
+        return decimal.TryParse(normalized, NumberStyles.Any, new CultureInfo("pl-PL"), out var result)
+            ? result
+            : 0;
+    }
+
+    private DateTime ParseDate(string input)
+    {
+        return DateTime.TryParseExact(input, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var result)
+            ? result
+            : DateTime.MinValue;
+    }
 }
-
-
-
