@@ -1,3 +1,94 @@
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
+using System.Globalization;
+
+public class OpenXmlExcelImporter
+{
+    public BalanceDocument ReadBalanceDocument(byte[] excelBytes)
+    {
+        using var stream = new MemoryStream(excelBytes);
+        using var document = SpreadsheetDocument.Open(stream, false);
+
+        var workbookPart = document.WorkbookPart;
+        var sheet = workbookPart.Workbook.Sheets.Elements<Sheet>().First();
+        var worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
+
+        var sharedStringTable = workbookPart.SharedStringTablePart.SharedStringTable;
+
+        string GetCellValue(string cellReference)
+        {
+            var cell = worksheetPart.Worksheet.Descendants<Cell>()
+                .FirstOrDefault(c => c.CellReference == cellReference);
+
+            if (cell == null || cell.CellValue == null)
+                return string.Empty;
+
+            var value = cell.CellValue.InnerText;
+
+            if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
+            {
+                var index = int.Parse(value);
+                return sharedStringTable.ElementAt(index).InnerText;
+            }
+
+            return value;
+        }
+
+        return new BalanceDocument
+        {
+            DocumentId = GetCellValue("B3"),
+            BalanceAtDate = ParseDate(GetCellValue("K1")),
+            TotalCapital = ParseDecimal(GetCellValue("C5")),
+            DueCapital = ParseDecimal(GetCellValue("D5")),
+            ContractualInterest = ParseDecimal(GetCellValue("E5")),
+            DueInterest = ParseDecimal(GetCellValue("F5")),
+            DefaultInterest = ParseDecimal(GetCellValue("G5")),
+            FeesOrCommissions = ParseDecimal(GetCellValue("H5")),
+            TotalRepaymentAmount = ParseDecimal(GetCellValue("I5")),
+            Currency = GetCellValue("J5"),
+            DueDate = ParseDate(GetCellValue("K5"))
+        };
+    }
+
+    private decimal ParseDecimal(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return 0;
+
+        input = input.Replace("\u00A0", "").Trim(); // usuń spacje niełamiące
+
+        return decimal.TryParse(input, NumberStyles.Any, new CultureInfo("pl-PL"), out var result)
+            ? result
+            : 0;
+    }
+
+    private DateTime ParseDate(string input)
+    {
+        // Excel może zwrócić datę jako liczba OADate (np. 45237)
+        if (double.TryParse(input, NumberStyles.Any, CultureInfo.InvariantCulture, out var oaDate))
+        {
+            try
+            {
+                return DateTime.FromOADate(oaDate);
+            }
+            catch
+            {
+                return DateTime.MinValue;
+            }
+        }
+
+        // Próba sparsowania ISO 8601
+        if (DateTime.TryParseExact(input, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+        {
+            return parsed;
+        }
+
+        return DateTime.MinValue;
+    }
+}
+
+
+
 using OfficeOpenXml;
 using System.Globalization;
 
