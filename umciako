@@ -1,10 +1,77 @@
-foreach (var row in worksheetPart.Worksheet.Descendants<Row>())
-{
-    foreach (var cell in row.Elements<Cell>())
-    {
-        string refId = cell.CellReference;
-        string value = GetCellValue(refId);
+using System;
+using System.Globalization;
 
-        Debug.WriteLine($"Cell {refId}: {value}");
+public static class ExcelValueParser
+{
+    /// <summary>
+    /// Parses a string from Excel to decimal using invariant culture.
+    /// Handles non-breaking spaces and falls back to 0 on failure.
+    /// </summary>
+    public static decimal ParseDecimal(string? input)
+    {
+        string normalized = Normalize(input);
+
+        return decimal.TryParse(
+            normalized,
+            NumberStyles.Any,
+            CultureInfo.InvariantCulture,
+            out var result
+        ) ? result : 0m;
+    }
+
+    /// <summary>
+    /// Parses a string from Excel to DateTime using OADate serial format (Excel format).
+    /// Falls back to DateTime.MinValue on failure.
+    /// </summary>
+    public static DateTime ParseDate(string? input)
+    {
+        string normalized = Normalize(input);
+
+        if (double.TryParse(
+                normalized,
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out var oaDate))
+        {
+            try
+            {
+                return DateTime.FromOADate(oaDate);
+            }
+            catch
+            {
+                // Invalid date range
+            }
+        }
+
+        return DateTime.MinValue;
+    }
+
+    /// <summary>
+    /// Removes non-breaking spaces and trims whitespace.
+    /// </summary>
+    private static string Normalize(string? input)
+    {
+        return input?
+            .Replace("\u00A0", "") // non-breaking space
+            .Trim()
+            ?? string.Empty;
     }
 }
+
+
+
+var item = new ZswBalanceDocument
+{
+    DocumentId = GetCellValue("B1"),
+    BalanceAtDate = ExcelValueParser.ParseDate(GetCellValue("C3")),
+    TotalCapital = ExcelValueParser.ParseDecimal(GetCellValue("C3")),
+    DueCapital = ExcelValueParser.ParseDecimal(GetCellValue("D3")),
+    ContractualInterest = ExcelValueParser.ParseDecimal(GetCellValue("E3")),
+    DueInterest = ExcelValueParser.ParseDecimal(GetCellValue("F3")),
+    DefaultInterest = ExcelValueParser.ParseDecimal(GetCellValue("G3")),
+    FeesOrCommissions = ExcelValueParser.ParseDecimal(GetCellValue("H3")),
+    TotalRepaymentAmount = ExcelValueParser.ParseDecimal(GetCellValue("I3")),
+    Currency = GetCellValue("J3"), // 👈 zwykły string
+    DueDate = ExcelValueParser.ParseDate(GetCellValue("K3"))
+};
+
