@@ -1,77 +1,31 @@
-using System;
-using System.Globalization;
-
-public static class ExcelValueParser
+public static DateTime ParseDate(string? input)
 {
-    /// <summary>
-    /// Parses a string from Excel to decimal using invariant culture.
-    /// Handles non-breaking spaces and falls back to 0 on failure.
-    /// </summary>
-    public static decimal ParseDecimal(string? input)
-    {
-        string normalized = Normalize(input);
+    string normalized = Normalize(input);
 
-        return decimal.TryParse(
+    // Spróbuj sparsować jako data tekstowa, np. "2025-05-23"
+    if (DateTime.TryParseExact(
             normalized,
-            NumberStyles.Any,
+            new[] { "yyyy-MM-dd", "dd.MM.yyyy", "yyyy/MM/dd" }, // dopasuj do formatu
             CultureInfo.InvariantCulture,
-            out var result
-        ) ? result : 0m;
+            DateTimeStyles.None,
+            out var date))
+    {
+        return date;
     }
 
-    /// <summary>
-    /// Parses a string from Excel to DateTime using OADate serial format (Excel format).
-    /// Falls back to DateTime.MinValue on failure.
-    /// </summary>
-    public static DateTime ParseDate(string? input)
+    // Jeśli nie udało się, spróbuj jako Excel OADate
+    if (double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var oaDate))
     {
-        string normalized = Normalize(input);
-
-        if (double.TryParse(
-                normalized,
-                NumberStyles.Any,
-                CultureInfo.InvariantCulture,
-                out var oaDate))
+        try
         {
-            try
-            {
-                return DateTime.FromOADate(oaDate);
-            }
-            catch
-            {
-                // Invalid date range
-            }
+            return DateTime.FromOADate(oaDate);
         }
-
-        return DateTime.MinValue;
+        catch
+        {
+            // out of range
+        }
     }
 
-    /// <summary>
-    /// Removes non-breaking spaces and trims whitespace.
-    /// </summary>
-    private static string Normalize(string? input)
-    {
-        return input?
-            .Replace("\u00A0", "") // non-breaking space
-            .Trim()
-            ?? string.Empty;
-    }
+    // Nie udało się sparsować
+    return DateTime.MinValue;
 }
-
-
-
-var item = new ZswBalanceDocument
-{
-    DocumentId = GetCellValue("B1"),
-    BalanceAtDate = ExcelValueParser.ParseDate(GetCellValue("C3")),
-    TotalCapital = ExcelValueParser.ParseDecimal(GetCellValue("C3")),
-    DueCapital = ExcelValueParser.ParseDecimal(GetCellValue("D3")),
-    ContractualInterest = ExcelValueParser.ParseDecimal(GetCellValue("E3")),
-    DueInterest = ExcelValueParser.ParseDecimal(GetCellValue("F3")),
-    DefaultInterest = ExcelValueParser.ParseDecimal(GetCellValue("G3")),
-    FeesOrCommissions = ExcelValueParser.ParseDecimal(GetCellValue("H3")),
-    TotalRepaymentAmount = ExcelValueParser.ParseDecimal(GetCellValue("I3")),
-    Currency = GetCellValue("J3"), // 👈 zwykły string
-    DueDate = ExcelValueParser.ParseDate(GetCellValue("K3"))
-};
-
