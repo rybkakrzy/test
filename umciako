@@ -1,31 +1,26 @@
-public static DateTime ParseDate(string? input)
-{
-    string normalized = Normalize(input);
+public readdataFromFile(): void {
+  const barcodeId = this.formGroup.get('barcodeId')?.value;
 
-    // Spróbuj sparsować jako data tekstowa, np. "2025-05-23"
-    if (DateTime.TryParseExact(
-            normalized,
-            new[] { "yyyy-MM-dd", "dd.MM.yyyy", "yyyy/MM/dd" }, // dopasuj do formatu
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.None,
-            out var date))
-    {
-        return date;
-    }
-
-    // Jeśli nie udało się, spróbuj jako Excel OADate
-    if (double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var oaDate))
-    {
-        try
-        {
-            return DateTime.FromOADate(oaDate);
+  this.cmkdownApiService.getZswBalanceDocumentData(barcodeId)
+    .subscribe({
+      next: (response) => {
+        this.data.documentSelect = response;
+        this.cdr.detectChanges();
+      },
+      error: (error) => {
+        if (error.status === 500) {
+          // Inform the user that the file was not found or server error occurred
+          this.toastService.notify({
+            message: 'Plik nie został znaleziony lub wystąpił błąd serwera.',
+            type: MessageType.Error
+          });
+        } else {
+          // Optional: handle other types of errors
+          this.toastService.notify({
+            message: 'Wystąpił nieoczekiwany błąd. Spróbuj ponownie później.',
+            type: MessageType.Error
+          });
         }
-        catch
-        {
-            // out of range
-        }
-    }
-
-    // Nie udało się sparsować
-    return DateTime.MinValue;
+      }
+    });
 }
