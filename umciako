@@ -1,3 +1,29 @@
+@Input() mode: 'shimmer' | 'spinner-text' | 'spinner' | 'spinner-mini' = 'shimmer';
+
+<!-- Mini spinner -->
+<div *ngIf="mode === 'spinner-mini'" class="spinner-mini"></div>
+
+// Mini spinner — do użycia np. inline w buttonie lub tekście
+.spinner-mini {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top-color: #3f51b5;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 4px; // można usunąć jeśli niepotrzebny margines
+}
+
+
+<span>
+  Ładowanie danych
+  <app-loading-placeholder mode="spinner-mini"></app-loading-placeholder>
+</span>
+
+
+
 import { Component, Input } from '@angular/core';
 
 @Component({
