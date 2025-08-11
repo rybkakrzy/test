@@ -1,22 +1,199 @@
-// Zakładam, że masz model danych np. BalanceModel
-private mapFormToModel(): BalanceModel {
-  const formValue = this.formGroup.value;
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
+import { Subject, distinctUntilChanged, takeUntil } from 'rxjs';
 
-  // Tworzymy nowy obiekt modelu, aby nie modyfikować starego przez referencję
-  const model: BalanceModel = {
-    productCode: formValue.productCode || null,
-    selectedContract: formValue.selectedContract || null,
-    lunchCreditDate: formValue.lunchCreditDate || null,
-    supervisor: {
-      name: formValue.supervisorName || null,
-      surname: formValue.supervisorSurname || null,
-      postCode: formValue.supervisorPostCode || null,
-      city: formValue.supervisorCity || null
-    },
-    selectedDocument: formValue.selectedDocument || null,
-    barcodeId: formValue.barcodeId || null,
-    reportingReceivablesToIng: formValue.reportingReceivablesToIng || false
-  };
+type MethodOfRequesting = 'TelephoneConversation' | 'CustomerRequest';
 
-  return model;
+interface UiForm {
+  selectedMethodRequesting: FormControl<MethodOfRequesting | null>;
+  telephoneConversation: FormGroup<{
+    meetingDate: FormControl<string | null>; // ISO date
+  }>;
+  customerRequest: FormGroup<{
+    meetingDate: FormControl<string | null>; // ISO date
+  }>;
 }
+
+@Component({
+  selector: 'app-withdrawal-form',
+  templateUrl: './withdrawal-form.component.html'
+})
+export class WithdrawalFormComponent implements OnInit, OnDestroy {
+  form: FormGroup<UiForm>;
+
+  private destroy$ = new Subject<void>();
+
+  constructor(private fb: FormBuilder) {
+    // Build root form with two sub-groups
+    this.form = this.fb.group<UiForm>({
+      selectedMethodRequesting: this.fb.control<MethodOfRequesting | null>(null),
+      telephoneConversation: this.fb.group({
+        meetingDate: this.fb.control<string | null>(null)
+      }),
+      customerRequest: this.fb.group({
+        meetingDate: this.fb.control<string | null>(null)
+      })
+    });
+
+    // Start with everything disabled until user picks an option
+    this.toggleVariantGroups(null);
+  }
+
+  ngOnInit(): void {
+    // React to radio selection changes
+    this.form.controls.selectedMethodRequesting.valueChanges
+      .pipe(distinctUntilChanged(), takeUntil(this.destroy$))
+      .subscribe((val) => this.toggleVariantGroups(val));
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  // --- UI handlers ---
+
+  onSubmit(): void {
+    if (!this.form.valid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+    const model = this.toModel();
+    // Call your service here
+    console.log('Submitting model', model);
+  }
+
+  // --- Private helpers ---
+
+  private toggleVariantGroups(selected: MethodOfRequesting | null): void {
+    // Enable the chosen variant, disable and clear the other.
+    const tel = this.form.controls.telephoneConversation;
+    const req = this.form.controls.customerRequest;
+
+    const isTelephone = selected === 'TelephoneConversation';
+    const isRequest = selected === 'CustomerRequest';
+
+    // Enable/disable groups
+    this.setGroupEnabled(tel, isTelephone);
+    this.setGroupEnabled(req, isRequest);
+
+    // Only active group's date is required
+    tel.controls.meetingDate.setValidators(isTelephone ? [Validators.required] : []);
+    req.controls.meetingDate.setValidators(isRequest ? [Validators.required] : []);
+    tel.controls.meetingDate.updateValueAndValidity({ emitEvent: false });
+    req.controls.meetingDate.updateValueAndValidity({ emitEvent: false });
+  }
+
+  private setGroupEnabled(group: FormGroup, enabled: boolean): void {
+    // Keep methods short and single-responsibility.
+    if (enabled) {
+      group.enable({ emitEvent: false });
+    } else {
+      group.disable({ emitEvent: false });
+      // Optional: clear hidden group's values to keep payload clean
+      Object.values(group.controls).forEach(c => c.reset(null, { emitEvent: false }));
+    }
+  }
+
+  private toModel() /*: WithdrawalFormModel*/ {
+    // Map the reactive form to a DTO / domain model.
+    const selected = this.form.controls.selectedMethodRequesting.value!;
+    const telDate = this.form.controls.telephoneConversation.controls.meetingDate.value;
+    const reqDate = this.form.controls.customerRequest.controls.meetingDate.value;
+
+    return {
+      selectedMethodRequesting: selected,
+      telephoneConversation: selected === 'TelephoneConversation' ? { meetingDate: telDate } : undefined,
+      customerRequest: selected === 'CustomerRequest' ? { meetingDate: reqDate } : undefined
+    };
+  }
+}
+
+
+
+
+<form [formGroup]="form" (ngSubmit)="onSubmit()" class="row">
+  <div class="col-md-12 mt-15 mb-15">
+    <h5>Sposób wnioskowania klienta o wydanie wypowiedzenia:</h5>
+
+    <!-- Radio group -->
+    <label class="mr-3">
+      <input
+        type="radio"
+        name="selectedMethodRequesting"
+        formControlName="selectedMethodRequesting"
+        [value]="'TelephoneConversation'"
+      />
+      Rozmowa telefoniczna
+    </label>
+
+    <label class="mr-3">
+      <input
+        type="radio"
+        name="selectedMethodRequesting"
+        formControlName="selectedMethodRequesting"
+        [value]="'CustomerRequest'"
+      />
+      Wniosek klienta
+    </label>
+  </div>
+
+  <!-- Telephone block -->
+  <div class="col-md-12 mb-10" *ngIf="form.value.selectedMethodRequesting === 'TelephoneConversation'">
+    <div [formGroup]="form.controls.telephoneConversation">
+      <label>Data rozmowy:</label>
+      <input
+        type="date"
+        formControlName="meetingDate"
+      />
+      <div class="text-danger" *ngIf="form.controls.telephoneConversation.controls.meetingDate.touched
+                                       && form.controls.telephoneConversation.controls.meetingDate.invalid">
+        Wymagana jest data rozmowy.
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer request block -->
+  <div class="col-md-12 mb-10" *ngIf="form.value.selectedMethodRequesting === 'CustomerRequest'">
+    <div [formGroup]="form.controls.customerRequest">
+      <label>Data spotkania:</label>
+      <input
+        type="date"
+        formControlName="meetingDate"
+      />
+      <div class="text-danger" *ngIf="form.controls.customerRequest.controls.meetingDate.touched
+                                       && form.controls.customerRequest.controls.meetingDate.invalid">
+        Wymagana jest data spotkania.
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-12 mt-10">
+    <button type="submit" [disabled]="form.invalid">Zapisz</button>
+  </div>
+</form>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+telephoneConversation?: {
+  meetingDate: string | null;
+  phoneNumber?: string | null;
+};
+
+customerRequest?: {
+  meetingDate: string | null;
+  requestId?: string | null;
+};
