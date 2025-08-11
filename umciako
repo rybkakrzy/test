@@ -197,3 +197,290 @@ customerRequest?: {
   meetingDate: string | null;
   requestId?: string | null;
 };
+
+---------------------------------------------------------------------------------
+
+export type DetailType = 'text' | 'textarea' | 'radio' | 'select';
+
+export interface ReasonDetailConfig {
+  type: DetailType;
+  required?: boolean;               // whether detail is mandatory when checked
+  options?: Array<{ value: string; label: string }>; // for radio/select
+  placeholder?: string;
+}
+
+export interface ReasonConfig {
+  id: string;
+  label: string;
+  detail?: ReasonDetailConfig;      // if present, render detail control
+}
+
+export interface SelectedReasonPayload {
+  id: string;
+  detail?: string;                  // chosen/entered detail, if any
+}
+
+export interface RefusalPayload {
+  reasons: SelectedReasonPayload[];
+}
+
+
+
+
+import { ReasonConfig } from './refusal.models';
+
+export const REASONS: ReasonConfig[] = [
+  {
+    id: 'BRAK_WARUNKOW',
+    label: 'Nie wypełniacie Państwo warunków ustalonych w negocjacjach',
+  },
+  {
+    id: 'BRAK_KONTAKTU',
+    label: 'Nie nawiązaliście Państwo kontaktu telefonicznego niezbędnego do uzyskania informacji',
+  },
+  {
+    id: 'NIEZGODNOSC',
+    label: 'Oświadczenia są niezgodne ze stanem faktycznym',
+  },
+  {
+    id: 'ZASADY_BANKU',
+    label: 'Zastosowano zasady obowiązujące w naszej instytucji',
+  },
+  {
+    id: 'WNIOSEK_POSTEPOWANIE',
+    label: 'Został złożony wniosek o postępowanie',
+    detail: {
+      // user must specify which proceeding it is
+      type: 'radio',
+      required: true,
+      options: [
+        { value: 'UPADLOSCIOWE', label: 'Upadłościowe' },
+        { value: 'EGZEKUCYJNE', label: 'Egzekucyjne' },
+        { value: 'ADMINISTRACYJNE', label: 'Administracyjne' },
+        { value: 'KARNOSKARBOWE', label: 'Karnoskarbowe' },
+        { value: 'NAPRAWCZE', label: 'Naprawcze' },
+        { value: 'RESTRUKTURYZACYJNE', label: 'Restrukturyzacyjne' },
+      ],
+    },
+  },
+  {
+    id: 'ZALEGLosci_PODATKOWE',
+    label: 'Posiadacie Państwo zaległości w spłacie podatków (tylko wraz z innymi powodami)',
+  },
+  {
+    id: 'INNE',
+    label: 'Inne – podaj jakie',
+    detail: {
+      type: 'text',
+      required: true,
+      placeholder: 'Opisz szczegóły',
+    },
+  },
+];
+
+
+
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { AbstractControl, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
+import { REASONS } from './refusal.config';
+import { ReasonConfig, RefusalPayload, SelectedReasonPayload } from './refusal.models';
+
+@Component({
+  selector: 'app-refusal-form',
+  standalone: true,
+  imports: [],
+  templateUrl: './refusal-form.component.html',
+  styleUrls: ['./refusal-form.component.css'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class RefusalFormComponent implements OnInit {
+  private readonly fb = inject(FormBuilder);
+
+  // Expose config to the template
+  reasons = REASONS;
+
+  /**
+   * The form keeps one group per reason: { checked: boolean, detail: string | null }
+   * Thanks to this we can toggle details and validate per reason.
+   */
+  form!: FormGroup<Record<string, FormGroup<{
+    checked: FormControl<boolean>;
+    detail: FormControl<string | null>;
+  }>>>;
+
+  ngOnInit(): void {
+    this.form = this.buildForm(this.reasons);
+  }
+
+  submit(): void {
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
+    const payload: RefusalPayload = { reasons: this.collectSelectedReasons(this.reasons) };
+    // TODO: send to API
+    console.log('Payload ->', payload);
+  }
+
+  // --------- builders ---------
+
+  private buildForm(config: ReasonConfig[]): RefusalFormComponent['form'] {
+    const groups: Record<string, FormGroup> = {};
+
+    for (const r of config) {
+      const detailRequired = !!r.detail?.required;
+
+      const group = this.fb.group({
+        checked: this.fb.nonNullable.control(false),
+        // Keep detail always present, but validate conditionally
+        detail: this.fb.control<string | null>(null),
+      });
+
+      // Attach conditional validator for detail
+      group.setValidators(this.detailRequiredWhenChecked(r));
+
+      groups[r.id] = group;
+    }
+
+    // Wrap groups in a parent FormGroup
+    return this.fb.group(groups) as any;
+  }
+
+  /**
+   * Validator factory:
+   * - If reason is checked and detail is required -> enforce non-empty detail
+   */
+  private detailRequiredWhenChecked(reason: ReasonConfig) {
+    return (control: AbstractControl) => {
+      const checked = control.get('checked')?.value === true;
+      const detail = (control.get('detail')?.value ?? '').toString().trim();
+      const needDetail = checked && reason.detail?.required;
+
+      if (needDetail && !detail) {
+        return { detailRequired: true };
+      }
+      return null;
+    };
+  }
+
+  // --------- mapping to API ---------
+
+  private collectSelectedReasons(config: ReasonConfig[]): SelectedReasonPayload[] {
+    const result: SelectedReasonPayload[] = [];
+
+    for (const r of config) {
+      const g = this.form.get(r.id) as FormGroup | null;
+      if (!g) { continue; }
+
+      const checked = g.get('checked')?.value === true;
+      if (!checked) { continue; }
+
+      // Normalize detail: keep as string in payload
+      const rawDetail = g.get('detail')?.value;
+      const detail = this.normalizeDetailValue(r, rawDetail);
+
+      result.push({ id: r.id, ...(detail ? { detail } : {}) });
+    }
+    return result;
+  }
+
+  private normalizeDetailValue(reason: ReasonConfig, raw: unknown): string | undefined {
+    // For radio/select detail we already store the selected value (string).
+    // For text/textarea ensure trimmed string.
+    if (raw == null) { return undefined; }
+    const val = String(raw).trim();
+    return val.length ? val : undefined;
+  }
+
+  // --------- helpers used by the template ---------
+
+  controlOf(reasonId: string): FormGroup {
+    return this.form.get(reasonId) as FormGroup;
+  }
+
+  showDetail(reasonId: string): boolean {
+    const g = this.controlOf(reasonId);
+    return g?.get('checked')?.value === true;
+  }
+}
+
+
+
+<form [formGroup]="form" (ngSubmit)="submit()" class="refusal-form">
+
+  <fieldset>
+    <legend>Powody odmowy</legend>
+
+    <div class="reason" *ngFor="let r of reasons">
+      <!-- Checkbox + label -->
+      <div class="row">
+        <label [attr.for]="r.id">
+          <input
+            type="checkbox"
+            [formControl]="controlOf(r.id).get('checked')"
+            [id]="r.id"
+          />
+          {{ r.label }}
+        </label>
+      </div>
+
+      <!-- Detail (conditionally rendered when checked) -->
+      <div class="detail" *ngIf="r.detail && showDetail(r.id)">
+        <ng-container [ngSwitch]="r.detail.type">
+
+          <!-- Text -->
+          <label *ngSwitchCase="'text'">
+            <input
+              type="text"
+              [placeholder]="r.detail.placeholder || 'Wpisz szczegóły'"
+              [formControl]="controlOf(r.id).get('detail')"
+            />
+          </label>
+
+          <!-- Textarea -->
+          <label *ngSwitchCase="'textarea'">
+            <textarea
+              rows="3"
+              [placeholder]="r.detail.placeholder || 'Wpisz szczegóły'"
+              [formControl]="controlOf(r.id).get('detail')"
+            ></textarea>
+          </label>
+
+          <!-- Radio -->
+          <div *ngSwitchCase="'radio'">
+            <div class="radio" *ngFor="let opt of r.detail.options">
+              <label>
+                <input
+                  type="radio"
+                  [value]="opt.value"
+                  [formControl]="controlOf(r.id).get('detail')"
+                />
+                {{ opt.label }}
+              </label>
+            </div>
+          </div>
+
+          <!-- Select -->
+          <label *ngSwitchCase="'select'">
+            <select [formControl]="controlOf(r.id).get('detail')">
+              <option value="" disabled selected>Wybierz...</option>
+              <option *ngFor="let opt of r.detail.options" [value]="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+          </label>
+
+        </ng-container>
+
+        <!-- Inline error for missing required detail -->
+        <div class="error" *ngIf="controlOf(r.id).hasError('detailRequired') && controlOf(r.id).touched">
+          To pole wymaga doprecyzowania.
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    <button type="submit" [disabled]="form.invalid">Zapisz</button>
+  </div>
+</form>
