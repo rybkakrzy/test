@@ -1,3 +1,11 @@
+ const base = this.fb.group({
+      id: this.fb.nonNullable.control(cfg.id),
+      label: this.fb.nonNullable.control(cfg.label),
+      selected: this.fb.nonNullable.control(false),
+      details: this.fb.control<FormGroup | FormControl | null>(null),
+    });
+
+
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
 import { Subject, distinctUntilChanged, takeUntil } from 'rxjs';
