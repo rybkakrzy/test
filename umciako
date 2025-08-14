@@ -1,494 +1,107 @@
- const base = this.fb.group({
-      id: this.fb.nonNullable.control(cfg.id),
-      label: this.fb.nonNullable.control(cfg.label),
-      selected: this.fb.nonNullable.control(false),
-      details: this.fb.control<FormGroup | FormControl | null>(null),
-    });
+import { Component } from '@angular/core';
+import { FormArray, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
 
+type Dictionary = Record<string, string>;
 
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
-import { Subject, distinctUntilChanged, takeUntil } from 'rxjs';
-
-type MethodOfRequesting = 'TelephoneConversation' | 'CustomerRequest';
-
-interface UiForm {
-  selectedMethodRequesting: FormControl<MethodOfRequesting | null>;
-  telephoneConversation: FormGroup<{
-    meetingDate: FormControl<string | null>; // ISO date
-  }>;
-  customerRequest: FormGroup<{
-    meetingDate: FormControl<string | null>; // ISO date
-  }>;
+interface CheckboxItemGroup {
+  // Typed FormControls for better type safety
+  key: FormControl<string>;
+  label: FormControl<string>;
+  checked: FormControl<boolean>;
 }
 
 @Component({
-  selector: 'app-withdrawal-form',
-  templateUrl: './withdrawal-form.component.html'
+  selector: 'app-permissions',
+  templateUrl: './permissions.component.html',
 })
-export class WithdrawalFormComponent implements OnInit, OnDestroy {
-  form: FormGroup<UiForm>;
+export class PermissionsComponent {
+  // Root form with a single FormArray named "items"
+  readonly form = this.fb.group({
+    items: this.fb.array<FormGroup<CheckboxItemGroup>>([]),
+  });
 
-  private destroy$ = new Subject<void>();
+  constructor(private readonly fb: FormBuilder) {
+    // Example dictionary: key -> label
+    const dict: Dictionary = {
+      read: 'Can read',
+      write: 'Can write',
+      share: 'Can share',
+      delete: 'Can delete',
+    };
 
-  constructor(private fb: FormBuilder) {
-    // Build root form with two sub-groups
-    this.form = this.fb.group<UiForm>({
-      selectedMethodRequesting: this.fb.control<MethodOfRequesting | null>(null),
-      telephoneConversation: this.fb.group({
-        meetingDate: this.fb.control<string | null>(null)
-      }),
-      customerRequest: this.fb.group({
-        meetingDate: this.fb.control<string | null>(null)
+    // (Optional) Preselected keys
+    const preselected = ['read', 'share'];
+
+    // Build FormArray from dictionary
+    this.form.setControl('items', this.buildCheckboxArray(dict, preselected));
+  }
+
+  // Convenience getter for template access
+  get items(): FormArray<FormGroup<CheckboxItemGroup>> {
+    return this.form.get('items') as FormArray<FormGroup<CheckboxItemGroup>>;
+  }
+
+  buildCheckboxArray(dict: Dictionary, preselectedKeys: string[] = []): FormArray<FormGroup<CheckboxItemGroup>> {
+    // Create a FormGroup per dictionary entry
+    const groups = Object.entries(dict).map(([key, label]) =>
+      this.fb.group<CheckboxItemGroup>({
+        // Store the key and label as string controls (read-only in UI, but kept in the form for easy access)
+        key: new FormControl(key, { nonNullable: true, validators: [Validators.required] }),
+        label: new FormControl(label, { nonNullable: true, validators: [Validators.required] }),
+        // The actual checkbox value
+        checked: new FormControl(preselectedKeys.includes(key), { nonNullable: true }),
       })
-    });
+    );
 
-    // Start with everything disabled until user picks an option
-    this.toggleVariantGroups(null);
+    return this.fb.array<FormGroup<CheckboxItemGroup>>(groups);
   }
 
-  ngOnInit(): void {
-    // React to radio selection changes
-    this.form.controls.selectedMethodRequesting.valueChanges
-      .pipe(distinctUntilChanged(), takeUntil(this.destroy$))
-      .subscribe((val) => this.toggleVariantGroups(val));
+  trackByIndex(index: number): number {
+    // Simple and efficient trackBy for *ngFor
+    return index;
   }
 
-  ngOnDestroy(): void {
-    this.destroy$.next();
-    this.destroy$.complete();
+  getSelectedKeys(): string[] {
+    // Returns all keys which are currently checked
+    return this.items.controls
+      .filter(group => group.controls.checked.value === true)
+      .map(group => group.controls.key.value);
   }
-
-  // --- UI handlers ---
 
   onSubmit(): void {
-    if (!this.form.valid) {
-      this.form.markAllAsTouched();
-      return;
-    }
-    const model = this.toModel();
-    // Call your service here
-    console.log('Submitting model', model);
-  }
-
-  // --- Private helpers ---
-
-  private toggleVariantGroups(selected: MethodOfRequesting | null): void {
-    // Enable the chosen variant, disable and clear the other.
-    const tel = this.form.controls.telephoneConversation;
-    const req = this.form.controls.customerRequest;
-
-    const isTelephone = selected === 'TelephoneConversation';
-    const isRequest = selected === 'CustomerRequest';
-
-    // Enable/disable groups
-    this.setGroupEnabled(tel, isTelephone);
-    this.setGroupEnabled(req, isRequest);
-
-    // Only active group's date is required
-    tel.controls.meetingDate.setValidators(isTelephone ? [Validators.required] : []);
-    req.controls.meetingDate.setValidators(isRequest ? [Validators.required] : []);
-    tel.controls.meetingDate.updateValueAndValidity({ emitEvent: false });
-    req.controls.meetingDate.updateValueAndValidity({ emitEvent: false });
-  }
-
-  private setGroupEnabled(group: FormGroup, enabled: boolean): void {
-    // Keep methods short and single-responsibility.
-    if (enabled) {
-      group.enable({ emitEvent: false });
-    } else {
-      group.disable({ emitEvent: false });
-      // Optional: clear hidden group's values to keep payload clean
-      Object.values(group.controls).forEach(c => c.reset(null, { emitEvent: false }));
-    }
-  }
-
-  private toModel() /*: WithdrawalFormModel*/ {
-    // Map the reactive form to a DTO / domain model.
-    const selected = this.form.controls.selectedMethodRequesting.value!;
-    const telDate = this.form.controls.telephoneConversation.controls.meetingDate.value;
-    const reqDate = this.form.controls.customerRequest.controls.meetingDate.value;
-
-    return {
-      selectedMethodRequesting: selected,
-      telephoneConversation: selected === 'TelephoneConversation' ? { meetingDate: telDate } : undefined,
-      customerRequest: selected === 'CustomerRequest' ? { meetingDate: reqDate } : undefined
-    };
+    // Example submit handler
+    const selected = this.getSelectedKeys();
+    console.log('Selected keys:', selected);
+    // TODO: handle the result as needed (send to API, etc.)
   }
 }
 
 
-
-
-<form [formGroup]="form" (ngSubmit)="onSubmit()" class="row">
-  <div class="col-md-12 mt-15 mb-15">
-    <h5>Sposób wnioskowania klienta o wydanie wypowiedzenia:</h5>
-
-    <!-- Radio group -->
-    <label class="mr-3">
-      <input
-        type="radio"
-        name="selectedMethodRequesting"
-        formControlName="selectedMethodRequesting"
-        [value]="'TelephoneConversation'"
-      />
-      Rozmowa telefoniczna
-    </label>
-
-    <label class="mr-3">
-      <input
-        type="radio"
-        name="selectedMethodRequesting"
-        formControlName="selectedMethodRequesting"
-        [value]="'CustomerRequest'"
-      />
-      Wniosek klienta
-    </label>
-  </div>
-
-  <!-- Telephone block -->
-  <div class="col-md-12 mb-10" *ngIf="form.value.selectedMethodRequesting === 'TelephoneConversation'">
-    <div [formGroup]="form.controls.telephoneConversation">
-      <label>Data rozmowy:</label>
-      <input
-        type="date"
-        formControlName="meetingDate"
-      />
-      <div class="text-danger" *ngIf="form.controls.telephoneConversation.controls.meetingDate.touched
-                                       && form.controls.telephoneConversation.controls.meetingDate.invalid">
-        Wymagana jest data rozmowy.
-      </div>
-    </div>
-  </div>
-
-  <!-- Customer request block -->
-  <div class="col-md-12 mb-10" *ngIf="form.value.selectedMethodRequesting === 'CustomerRequest'">
-    <div [formGroup]="form.controls.customerRequest">
-      <label>Data spotkania:</label>
-      <input
-        type="date"
-        formControlName="meetingDate"
-      />
-      <div class="text-danger" *ngIf="form.controls.customerRequest.controls.meetingDate.touched
-                                       && form.controls.customerRequest.controls.meetingDate.invalid">
-        Wymagana jest data spotkania.
-      </div>
-    </div>
-  </div>
-
-  <div class="col-md-12 mt-10">
-    <button type="submit" [disabled]="form.invalid">Zapisz</button>
-  </div>
-</form>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-telephoneConversation?: {
-  meetingDate: string | null;
-  phoneNumber?: string | null;
-};
-
-customerRequest?: {
-  meetingDate: string | null;
-  requestId?: string | null;
-};
-
----------------------------------------------------------------------------------
-
-export type DetailType = 'text' | 'textarea' | 'radio' | 'select';
-
-export interface ReasonDetailConfig {
-  type: DetailType;
-  required?: boolean;               // whether detail is mandatory when checked
-  options?: Array<{ value: string; label: string }>; // for radio/select
-  placeholder?: string;
-}
-
-export interface ReasonConfig {
-  id: string;
-  label: string;
-  detail?: ReasonDetailConfig;      // if present, render detail control
-}
-
-export interface SelectedReasonPayload {
-  id: string;
-  detail?: string;                  // chosen/entered detail, if any
-}
-
-export interface RefusalPayload {
-  reasons: SelectedReasonPayload[];
-}
-
-
-
-
-import { ReasonConfig } from './refusal.models';
-
-export const REASONS: ReasonConfig[] = [
-  {
-    id: 'BRAK_WARUNKOW',
-    label: 'Nie wypełniacie Państwo warunków ustalonych w negocjacjach',
-  },
-  {
-    id: 'BRAK_KONTAKTU',
-    label: 'Nie nawiązaliście Państwo kontaktu telefonicznego niezbędnego do uzyskania informacji',
-  },
-  {
-    id: 'NIEZGODNOSC',
-    label: 'Oświadczenia są niezgodne ze stanem faktycznym',
-  },
-  {
-    id: 'ZASADY_BANKU',
-    label: 'Zastosowano zasady obowiązujące w naszej instytucji',
-  },
-  {
-    id: 'WNIOSEK_POSTEPOWANIE',
-    label: 'Został złożony wniosek o postępowanie',
-    detail: {
-      // user must specify which proceeding it is
-      type: 'radio',
-      required: true,
-      options: [
-        { value: 'UPADLOSCIOWE', label: 'Upadłościowe' },
-        { value: 'EGZEKUCYJNE', label: 'Egzekucyjne' },
-        { value: 'ADMINISTRACYJNE', label: 'Administracyjne' },
-        { value: 'KARNOSKARBOWE', label: 'Karnoskarbowe' },
-        { value: 'NAPRAWCZE', label: 'Naprawcze' },
-        { value: 'RESTRUKTURYZACYJNE', label: 'Restrukturyzacyjne' },
-      ],
-    },
-  },
-  {
-    id: 'ZALEGLosci_PODATKOWE',
-    label: 'Posiadacie Państwo zaległości w spłacie podatków (tylko wraz z innymi powodami)',
-  },
-  {
-    id: 'INNE',
-    label: 'Inne – podaj jakie',
-    detail: {
-      type: 'text',
-      required: true,
-      placeholder: 'Opisz szczegóły',
-    },
-  },
-];
-
-
-
-import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
-import { AbstractControl, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
-import { REASONS } from './refusal.config';
-import { ReasonConfig, RefusalPayload, SelectedReasonPayload } from './refusal.models';
-
-@Component({
-  selector: 'app-refusal-form',
-  standalone: true,
-  imports: [],
-  templateUrl: './refusal-form.component.html',
-  styleUrls: ['./refusal-form.component.css'],
-  changeDetection: ChangeDetectionStrategy.OnPush,
-})
-export class RefusalFormComponent implements OnInit {
-  private readonly fb = inject(FormBuilder);
-
-  // Expose config to the template
-  reasons = REASONS;
-
-  /**
-   * The form keeps one group per reason: { checked: boolean, detail: string | null }
-   * Thanks to this we can toggle details and validate per reason.
-   */
-  form!: FormGroup<Record<string, FormGroup<{
-    checked: FormControl<boolean>;
-    detail: FormControl<string | null>;
-  }>>>;
-
-  ngOnInit(): void {
-    this.form = this.buildForm(this.reasons);
-  }
-
-  submit(): void {
-    if (this.form.invalid) {
-      this.form.markAllAsTouched();
-      return;
-    }
-    const payload: RefusalPayload = { reasons: this.collectSelectedReasons(this.reasons) };
-    // TODO: send to API
-    console.log('Payload ->', payload);
-  }
-
-  // --------- builders ---------
-
-  private buildForm(config: ReasonConfig[]): RefusalFormComponent['form'] {
-    const groups: Record<string, FormGroup> = {};
-
-    for (const r of config) {
-      const detailRequired = !!r.detail?.required;
-
-      const group = this.fb.group({
-        checked: this.fb.nonNullable.control(false),
-        // Keep detail always present, but validate conditionally
-        detail: this.fb.control<string | null>(null),
-      });
-
-      // Attach conditional validator for detail
-      group.setValidators(this.detailRequiredWhenChecked(r));
-
-      groups[r.id] = group;
-    }
-
-    // Wrap groups in a parent FormGroup
-    return this.fb.group(groups) as any;
-  }
-
-  /**
-   * Validator factory:
-   * - If reason is checked and detail is required -> enforce non-empty detail
-   */
-  private detailRequiredWhenChecked(reason: ReasonConfig) {
-    return (control: AbstractControl) => {
-      const checked = control.get('checked')?.value === true;
-      const detail = (control.get('detail')?.value ?? '').toString().trim();
-      const needDetail = checked && reason.detail?.required;
-
-      if (needDetail && !detail) {
-        return { detailRequired: true };
-      }
-      return null;
-    };
-  }
-
-  // --------- mapping to API ---------
-
-  private collectSelectedReasons(config: ReasonConfig[]): SelectedReasonPayload[] {
-    const result: SelectedReasonPayload[] = [];
-
-    for (const r of config) {
-      const g = this.form.get(r.id) as FormGroup | null;
-      if (!g) { continue; }
-
-      const checked = g.get('checked')?.value === true;
-      if (!checked) { continue; }
-
-      // Normalize detail: keep as string in payload
-      const rawDetail = g.get('detail')?.value;
-      const detail = this.normalizeDetailValue(r, rawDetail);
-
-      result.push({ id: r.id, ...(detail ? { detail } : {}) });
-    }
-    return result;
-  }
-
-  private normalizeDetailValue(reason: ReasonConfig, raw: unknown): string | undefined {
-    // For radio/select detail we already store the selected value (string).
-    // For text/textarea ensure trimmed string.
-    if (raw == null) { return undefined; }
-    const val = String(raw).trim();
-    return val.length ? val : undefined;
-  }
-
-  // --------- helpers used by the template ---------
-
-  controlOf(reasonId: string): FormGroup {
-    return this.form.get(reasonId) as FormGroup;
-  }
-
-  showDetail(reasonId: string): boolean {
-    const g = this.controlOf(reasonId);
-    return g?.get('checked')?.value === true;
-  }
-}
-
-
-
-<form [formGroup]="form" (ngSubmit)="submit()" class="refusal-form">
-
-  <fieldset>
-    <legend>Powody odmowy</legend>
-
-    <div class="reason" *ngFor="let r of reasons">
-      <!-- Checkbox + label -->
-      <div class="row">
-        <label [attr.for]="r.id">
-          <input
-            type="checkbox"
-            [formControl]="controlOf(r.id).get('checked')"
-            [id]="r.id"
-          />
-          {{ r.label }}
+--------------------------------------
+
+
+<form [formGroup]="form" (ngSubmit)="onSubmit()">
+  <div formArrayName="items">
+    <ng-container
+      *ngFor="let group of items.controls; let i = index; trackBy: trackByIndex"
+      [formGroupName]="i"
+    >
+      <div class="flex items-center gap-2 py-1">
+        <!-- Use a stable id derived from the key to tie input and label -->
+        <input
+          type="checkbox"
+          formControlName="checked"
+          [id]="'chk-' + group.controls.key.value"
+        />
+        <label
+          class="cursor-pointer"
+          [for]="'chk-' + group.controls.key.value"
+        >
+          {{ group.controls.label.value }}
         </label>
       </div>
-
-      <!-- Detail (conditionally rendered when checked) -->
-      <div class="detail" *ngIf="r.detail && showDetail(r.id)">
-        <ng-container [ngSwitch]="r.detail.type">
-
-          <!-- Text -->
-          <label *ngSwitchCase="'text'">
-            <input
-              type="text"
-              [placeholder]="r.detail.placeholder || 'Wpisz szczegóły'"
-              [formControl]="controlOf(r.id).get('detail')"
-            />
-          </label>
-
-          <!-- Textarea -->
-          <label *ngSwitchCase="'textarea'">
-            <textarea
-              rows="3"
-              [placeholder]="r.detail.placeholder || 'Wpisz szczegóły'"
-              [formControl]="controlOf(r.id).get('detail')"
-            ></textarea>
-          </label>
-
-          <!-- Radio -->
-          <div *ngSwitchCase="'radio'">
-            <div class="radio" *ngFor="let opt of r.detail.options">
-              <label>
-                <input
-                  type="radio"
-                  [value]="opt.value"
-                  [formControl]="controlOf(r.id).get('detail')"
-                />
-                {{ opt.label }}
-              </label>
-            </div>
-          </div>
-
-          <!-- Select -->
-          <label *ngSwitchCase="'select'">
-            <select [formControl]="controlOf(r.id).get('detail')">
-              <option value="" disabled selected>Wybierz...</option>
-              <option *ngFor="let opt of r.detail.options" [value]="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
-          </label>
-
-        </ng-container>
-
-        <!-- Inline error for missing required detail -->
-        <div class="error" *ngIf="controlOf(r.id).hasError('detailRequired') && controlOf(r.id).touched">
-          To pole wymaga doprecyzowania.
-        </div>
-      </div>
-    </div>
-  </fieldset>
-
-  <div class="actions">
-    <button type="submit" [disabled]="form.invalid">Zapisz</button>
+    </ng-container>
   </div>
+
+  <button type="submit">Save</button>
 </form>
