@@ -1,3 +1,136 @@
+using System;
+using System.Text;
+
+public static class NumberToWordsConverter
+{
+    private static readonly string[] Units =
+    {
+        "", "jeden", "dwa", "trzy", "cztery", "pięć",
+        "sześć", "siedem", "osiem", "dziewięć",
+        "dziesięć", "jedenaście", "dwanaście", "trzynaście",
+        "czternaście", "piętnaście", "szesnaście", "siedemnaście",
+        "osiemnaście", "dziewiętnaście"
+    };
+
+    private static readonly string[] Tens =
+    {
+        "", "", "dwadzieścia", "trzydzieści", "czterdzieści", "pięćdziesiąt",
+        "sześćdziesiąt", "siedemdziesiąt", "osiemdziesiąt", "dziewięćdziesiąt"
+    };
+
+    private static readonly string[] Hundreds =
+    {
+        "", "sto", "dwieście", "trzysta", "czterysta", "pięćset",
+        "sześćset", "siedemset", "osiemset", "dziewięćset"
+    };
+
+    private static readonly string[,] Groups =
+    {
+        { "", "", "" },
+        { "tysiąc", "tysiące", "tysięcy" },
+        { "milion", "miliony", "milionów" },
+        { "miliard", "miliardy", "miliardów" }
+    };
+
+    /// <summary>
+    /// Converts a decimal amount to Polish words with currency (złote, grosze).
+    /// </summary>
+    public static string ToPolishCurrencyWords(decimal amount)
+    {
+        long zloty = (long)Math.Floor(amount);
+        int grosze = (int)((amount - zloty) * 100);
+
+        string zlotyPart = NumberToWords(zloty);
+        string groszePart = grosze.ToString("D2") + "/100";
+
+        return $"{zlotyPart} złotych {groszePart}";
+    }
+
+    /// <summary>
+    /// Converts a number to Polish words (supports up to billions).
+    /// </summary>
+    private static string NumberToWords(long number)
+    {
+        if (number == 0)
+            return "zero";
+
+        var sb = new StringBuilder();
+        int group = 0;
+
+        while (number > 0)
+        {
+            int hundreds = (int)(number % 1000);
+            number /= 1000;
+
+            if (hundreds > 0)
+            {
+                string groupWords = ThreeDigitsToWords(hundreds);
+
+                // Choose correct group suffix depending on number
+                int form = GetGroupForm(hundreds);
+                string groupSuffix = Groups[group, form];
+
+                sb.Insert(0, $"{groupWords} {groupSuffix} ");
+            }
+            group++;
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Converts numbers from 1 to 999 into words.
+    /// </summary>
+    private static string ThreeDigitsToWords(int number)
+    {
+        var sb = new StringBuilder();
+
+        int h = number / 100;
+        int t = (number % 100) / 10;
+        int u = number % 10;
+
+        if (h > 0)
+            sb.Append(Hundreds[h] + " ");
+
+        if (t == 1 && u > 0) // from 11 to 19
+        {
+            sb.Append(Units[10 + u] + " ");
+        }
+        else
+        {
+            if (t > 0)
+                sb.Append(Tens[t] + " ");
+            if (u > 0)
+                sb.Append(Units[u] + " ");
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Returns grammatical form of group name (1 - singular, 2 - plural, 3 - many).
+    /// </summary>
+    private static int GetGroupForm(int number)
+    {
+        if (number == 1)
+            return 0;
+
+        int n10 = number % 10;
+        int n100 = number % 100;
+
+        if (n10 >= 2 && n10 <= 4 && !(n100 >= 12 && n100 <= 14))
+            return 1;
+
+        return 2;
+    }
+}
+
+
+
+-------------------------
+
+
+
 import { Component } from '@angular/core';
 import { FormArray, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
 
