@@ -1,7 +1,13 @@
 using System;
+using System.Globalization;
 using System.Text;
 
-public static class NumberToWordsConverter
+public interface IAmountToWordsConverter
+{
+    string ToWords<T>(T amount) where T : IConvertible;
+}
+
+public class PolishAmountToWordsConverter : IAmountToWordsConverter
 {
     private static readonly string[] Units =
     {
@@ -32,23 +38,29 @@ public static class NumberToWordsConverter
         { "miliard", "miliardy", "miliardów" }
     };
 
-    /// <summary>
-    /// Converts a decimal amount to Polish words with currency (złote, grosze).
-    /// </summary>
-    public static string ToPolishCurrencyWords(decimal amount)
+    public string ToWords<T>(T amount) where T : IConvertible
     {
-        long zloty = (long)Math.Floor(amount);
-        int grosze = (int)((amount - zloty) * 100);
+        if (amount == null)
+            throw new ArgumentNullException(nameof(amount));
+
+        if (!decimal.TryParse(
+                amount.ToString(CultureInfo.InvariantCulture),
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out decimal decimalAmount))
+        {
+            throw new ArgumentException("The provided value cannot be converted to a number.", nameof(amount));
+        }
+
+        long zloty = (long)Math.Floor(decimalAmount);
+        int grosze = (int)((decimalAmount - zloty) * 100);
 
         string zlotyPart = NumberToWords(zloty);
-        string groszePart = grosze.ToString("D2") + "/100";
+        string groszePart = grosze.ToString("D2", CultureInfo.InvariantCulture) + "/100";
 
         return $"{zlotyPart} złotych {groszePart}";
     }
 
-    /// <summary>
-    /// Converts a number to Polish words (supports up to billions).
-    /// </summary>
     private static string NumberToWords(long number)
     {
         if (number == 0)
@@ -66,7 +78,6 @@ public static class NumberToWordsConverter
             {
                 string groupWords = ThreeDigitsToWords(hundreds);
 
-                // Choose correct group suffix depending on number
                 int form = GetGroupForm(hundreds);
                 string groupSuffix = Groups[group, form];
 
@@ -78,9 +89,6 @@ public static class NumberToWordsConverter
         return sb.ToString().Trim();
     }
 
-    /// <summary>
-    /// Converts numbers from 1 to 999 into words.
-    /// </summary>
     private static string ThreeDigitsToWords(int number)
     {
         var sb = new StringBuilder();
@@ -92,7 +100,7 @@ public static class NumberToWordsConverter
         if (h > 0)
             sb.Append(Hundreds[h] + " ");
 
-        if (t == 1 && u > 0) // from 11 to 19
+        if (t == 1 && u > 0) // 11–19
         {
             sb.Append(Units[10 + u] + " ");
         }
@@ -107,9 +115,6 @@ public static class NumberToWordsConverter
         return sb.ToString().Trim();
     }
 
-    /// <summary>
-    /// Returns grammatical form of group name (1 - singular, 2 - plural, 3 - many).
-    /// </summary>
     private static int GetGroupForm(int number)
     {
         if (number == 1)
@@ -122,6 +127,28 @@ public static class NumberToWordsConverter
             return 1;
 
         return 2;
+    }
+}
+
+// Przykład użycia
+class Program
+{
+    static void Main()
+    {
+        IAmountToWordsConverter converter = new PolishAmountToWordsConverter();
+
+        string result1 = converter.ToWords(489209.08m);
+        string result2 = converter.ToWords("12345.67");
+        string result3 = converter.ToWords(1000);
+
+        Console.WriteLine(result1);
+        // czterysta osiemdziesiąt dziewięć tysięcy dwieście dziewięć złotych 08/100
+
+        Console.WriteLine(result2);
+        // dwanaście tysięcy trzysta czterdzieści pięć złotych 67/100
+
+        Console.WriteLine(result3);
+        // jeden tysiąc złotych 00/100
     }
 }
 
