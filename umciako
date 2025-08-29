@@ -1,3 +1,27 @@
+public string FormatBankAccountNumber(string accountNumber)
+{
+    if (string.IsNullOrWhiteSpace(accountNumber))
+        throw new ArgumentException("Numer konta nie może być pusty.");
+
+    // Remove any spaces just in case
+    accountNumber = accountNumber.Replace(" ", string.Empty);
+
+    if (accountNumber.Length < 2)
+        throw new ArgumentException("Numer konta musi zawierać co najmniej 2 cyfry.");
+
+    // First 2 digits (check digits)
+    string checkDigits = accountNumber.Substring(0, 2);
+
+    // Rest grouped in blocks of 4
+    string rest = accountNumber.Substring(2);
+    var groups = Enumerable.Range(0, rest.Length / 4 + (rest.Length % 4 == 0 ? 0 : 1))
+        .Select(i => rest.Substring(i * 4, Math.Min(4, rest.Length - i * 4)));
+
+    return checkDigits + " " + string.Join(" ", groups);
+}
+
+
+
 using System;
 using System.Globalization;
 using System.Text;
