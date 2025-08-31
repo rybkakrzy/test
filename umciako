@@ -1,6 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormArray, FormGroup } from '@angular/forms';
 
+interface Option {
+  key: string;
+  value: string;
+}
+
 @Component({
   selector: 'app-dynamic-checkbox-form',
   templateUrl: './dynamic-checkbox-form.component.html'
@@ -9,42 +14,49 @@ export class DynamicCheckboxFormComponent implements OnInit {
 
   form!: FormGroup;
 
-  options = [
+  // Lista opcji (np. z konfiguracji, stała lub pobrana z API)
+  options: Option[] = [
     { key: 'A', value: 'Option A' },
     { key: 'B', value: 'Option B' },
     { key: 'C', value: 'Option C' }
   ];
 
+  // Dane np. z API – zaznaczone pola (symulacja)
+  preselectedKeys: string[] | null = ['A', 'C'];
+  // Jeśli brak danych -> ustaw null albo pustą tablicę
+
   constructor(private fb: FormBuilder) {}
 
   ngOnInit(): void {
     this.form = this.fb.group({
-      selections: this.fb.array([]) // dynamiczna tablica checkboxów
+      selections: this.buildSelectionsArray(this.options, this.preselectedKeys)
     });
-
-    this.addCheckboxes();
   }
 
-  // Add one checkbox control for each option
-  private addCheckboxes(): void {
-    this.options.forEach(() =>
-      (this.selectionsFormArray.push(this.fb.control(false)))
+  /**
+   * Build FormArray of checkbox controls
+   * @param options - list of available options
+   * @param preselectedKeys - keys that should be checked by default
+   */
+  private buildSelectionsArray(options: Option[], preselectedKeys: string[] | null): FormArray {
+    return this.fb.array(
+      options.map(opt => {
+        const isChecked = preselectedKeys?.includes(opt.key) ?? false;
+        return this.fb.control(isChecked);
+      })
     );
   }
 
-  // Helper getter
   get selectionsFormArray(): FormArray {
     return this.form.get('selections') as FormArray;
   }
 
-  // Extract selected keys
   getSelectedKeys(): string[] {
     return this.form.value.selections
       .map((checked: boolean, i: number) => checked ? this.options[i].key : null)
       .filter((v: string | null) => v !== null) as string[];
   }
 
-  // Simulate sending to API
   onSubmit(): void {
     const selectedKeys = this.getSelectedKeys();
     console.log('Send to API:', selectedKeys);
