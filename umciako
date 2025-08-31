@@ -1,4 +1,96 @@
 import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormArray, FormGroup, FormControl } from '@angular/forms';
+
+interface Option {
+  key: string;
+  value: string;
+}
+
+@Component({
+  selector: 'app-dynamic-checkbox-form',
+  templateUrl: './dynamic-checkbox-form.component.html'
+})
+export class DynamicCheckboxFormComponent implements OnInit {
+
+  form!: FormGroup;
+
+  options: Option[] = [
+    { key: 'A', value: 'Option A' },
+    { key: 'B', value: 'Option B' },
+    { key: 'C', value: 'Option C' },
+    { key: 'D', value: 'Another choice' }
+  ];
+
+  preselectedKeys: string[] | null = ['A', 'C'];
+
+  // Input for search
+  searchControl = new FormControl('');
+
+  constructor(private fb: FormBuilder) {}
+
+  ngOnInit(): void {
+    this.form = this.fb.group({
+      selections: this.buildSelectionsArray(this.options, this.preselectedKeys)
+    });
+  }
+
+  private buildSelectionsArray(options: Option[], preselectedKeys: string[] | null): FormArray {
+    return this.fb.array(
+      options.map(opt => {
+        const isChecked = preselectedKeys?.includes(opt.key) ?? false;
+        return this.fb.control(isChecked);
+      })
+    );
+  }
+
+  get selectionsFormArray(): FormArray {
+    return this.form.get('selections') as FormArray;
+  }
+
+  // Filter options by search input
+  get filteredOptions(): Option[] {
+    const term = this.searchControl.value?.toLowerCase() ?? '';
+    return this.options.filter(opt => opt.value.toLowerCase().includes(term));
+  }
+
+  getSelectedKeys(): string[] {
+    return this.form.value.selections
+      .map((checked: boolean, i: number) => checked ? this.options[i].key : null)
+      .filter((v: string | null) => v !== null) as string[];
+  }
+
+  onSubmit(): void {
+    const selectedKeys = this.getSelectedKeys();
+    console.log('Send to API:', selectedKeys);
+  }
+}
+
+
+
+<form [formGroup]="form" (ngSubmit)="onSubmit()">
+  <!-- Search input -->
+  <input
+    type="text"
+    [formControl]="searchControl"
+    placeholder="Search options..."
+  />
+
+  <div formArrayName="selections">
+    <div *ngFor="let option of filteredOptions; let i = index">
+      <label>
+        <input type="checkbox" [formControlName]="i" />
+        {{ option.value }}
+      </label>
+    </div>
+  </div>
+
+  <button type="submit">Submit</button>
+</form>
+
+------------------------
+
+
+import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormArray, FormGroup } from '@angular/forms';
 
 interface Option {
