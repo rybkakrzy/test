@@ -1,291 +1,66 @@
-public string FormatBankAccountNumber(string accountNumber)
-{
-    if (string.IsNullOrWhiteSpace(accountNumber))
-        throw new ArgumentException("Numer konta nie może być pusty.");
-
-    // Remove any spaces just in case
-    accountNumber = accountNumber.Replace(" ", string.Empty);
-
-    if (accountNumber.Length < 2)
-        throw new ArgumentException("Numer konta musi zawierać co najmniej 2 cyfry.");
-
-    // First 2 digits (check digits)
-    string checkDigits = accountNumber.Substring(0, 2);
-
-    // Rest grouped in blocks of 4
-    string rest = accountNumber.Substring(2);
-    var groups = Enumerable.Range(0, rest.Length / 4 + (rest.Length % 4 == 0 ? 0 : 1))
-        .Select(i => rest.Substring(i * 4, Math.Min(4, rest.Length - i * 4)));
-
-    return checkDigits + " " + string.Join(" ", groups);
-}
-
-
-
-using System;
-using System.Globalization;
-using System.Text;
-
-public interface IAmountToWordsConverter
-{
-    string ToWords<T>(T amount) where T : IConvertible;
-}
-
-public class PolishAmountToWordsConverter : IAmountToWordsConverter
-{
-    private static readonly string[] Units =
-    {
-        "", "jeden", "dwa", "trzy", "cztery", "pięć",
-        "sześć", "siedem", "osiem", "dziewięć",
-        "dziesięć", "jedenaście", "dwanaście", "trzynaście",
-        "czternaście", "piętnaście", "szesnaście", "siedemnaście",
-        "osiemnaście", "dziewiętnaście"
-    };
-
-    private static readonly string[] Tens =
-    {
-        "", "", "dwadzieścia", "trzydzieści", "czterdzieści", "pięćdziesiąt",
-        "sześćdziesiąt", "siedemdziesiąt", "osiemdziesiąt", "dziewięćdziesiąt"
-    };
-
-    private static readonly string[] Hundreds =
-    {
-        "", "sto", "dwieście", "trzysta", "czterysta", "pięćset",
-        "sześćset", "siedemset", "osiemset", "dziewięćset"
-    };
-
-    private static readonly string[,] Groups =
-    {
-        { "", "", "" },
-        { "tysiąc", "tysiące", "tysięcy" },
-        { "milion", "miliony", "milionów" },
-        { "miliard", "miliardy", "miliardów" }
-    };
-
-    public string ToWords<T>(T amount) where T : IConvertible
-    {
-        if (amount == null)
-            throw new ArgumentNullException(nameof(amount));
-
-        if (!decimal.TryParse(
-                amount.ToString(CultureInfo.InvariantCulture),
-                NumberStyles.Any,
-                CultureInfo.InvariantCulture,
-                out decimal decimalAmount))
-        {
-            throw new ArgumentException("The provided value cannot be converted to a number.", nameof(amount));
-        }
-
-        long zloty = (long)Math.Floor(decimalAmount);
-        int grosze = (int)((decimalAmount - zloty) * 100);
-
-        string zlotyPart = NumberToWords(zloty);
-        string groszePart = grosze.ToString("D2", CultureInfo.InvariantCulture) + "/100";
-
-        return $"{zlotyPart} złotych {groszePart}";
-    }
-
-    private static string NumberToWords(long number)
-    {
-        if (number == 0)
-            return "zero";
-
-        var sb = new StringBuilder();
-        int group = 0;
-
-        while (number > 0)
-        {
-            int hundreds = (int)(number % 1000);
-            number /= 1000;
-
-            if (hundreds > 0)
-            {
-                string groupWords = ThreeDigitsToWords(hundreds);
-
-                int form = GetGroupForm(hundreds);
-                string groupSuffix = Groups[group, form];
-
-                sb.Insert(0, $"{groupWords} {groupSuffix} ");
-            }
-            group++;
-        }
-
-        return sb.ToString().Trim();
-    }
-
-    private static string ThreeDigitsToWords(int number)
-    {
-        var sb = new StringBuilder();
-
-        int h = number / 100;
-        int t = (number % 100) / 10;
-        int u = number % 10;
-
-        if (h > 0)
-            sb.Append(Hundreds[h] + " ");
-
-        if (t == 1 && u > 0) // 11–19
-        {
-            sb.Append(Units[10 + u] + " ");
-        }
-        else
-        {
-            if (t > 0)
-                sb.Append(Tens[t] + " ");
-            if (u > 0)
-                sb.Append(Units[u] + " ");
-        }
-
-        return sb.ToString().Trim();
-    }
-
-    private static int GetGroupForm(int number)
-    {
-        if (number == 1)
-            return 0;
-
-        int n10 = number % 10;
-        int n100 = number % 100;
-
-        if (n10 >= 2 && n10 <= 4 && !(n100 >= 12 && n100 <= 14))
-            return 1;
-
-        return 2;
-    }
-}
-
-// Przykład użycia
-class Program
-{
-    static void Main()
-    {
-        IAmountToWordsConverter converter = new PolishAmountToWordsConverter();
-
-        string result1 = converter.ToWords(489209.08m);
-        string result2 = converter.ToWords("12345.67");
-        string result3 = converter.ToWords(1000);
-
-        Console.WriteLine(result1);
-        // czterysta osiemdziesiąt dziewięć tysięcy dwieście dziewięć złotych 08/100
-
-        Console.WriteLine(result2);
-        // dwanaście tysięcy trzysta czterdzieści pięć złotych 67/100
-
-        Console.WriteLine(result3);
-        // jeden tysiąc złotych 00/100
-    }
-}
-
-
-
--------------------------
-
-
-
-import { Component } from '@angular/core';
-import { FormArray, FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
-
-type Dictionary = Record<string, string>;
-
-interface CheckboxItemGroup {
-  // Typed FormControls for better type safety
-  key: FormControl<string>;
-  label: FormControl<string>;
-  checked: FormControl<boolean>;
-}
+import { Component, OnInit } from '@angular/core';
+import { FormBuilder, FormArray, FormGroup } from '@angular/forms';
 
 @Component({
-  selector: 'app-permissions',
-  templateUrl: './permissions.component.html',
+  selector: 'app-dynamic-checkbox-form',
+  templateUrl: './dynamic-checkbox-form.component.html'
 })
-export class PermissionsComponent {
-  // Root form with a single FormArray named "items"
-  readonly form = this.fb.group({
-    items: this.fb.array<FormGroup<CheckboxItemGroup>>([]),
-  });
+export class DynamicCheckboxFormComponent implements OnInit {
 
-  constructor(private readonly fb: FormBuilder) {
-    // Example dictionary: key -> label
-    const dict: Dictionary = {
-      read: 'Can read',
-      write: 'Can write',
-      share: 'Can share',
-      delete: 'Can delete',
-    };
+  form!: FormGroup;
 
-    // (Optional) Preselected keys
-    const preselected = ['read', 'share'];
+  options = [
+    { key: 'A', value: 'Option A' },
+    { key: 'B', value: 'Option B' },
+    { key: 'C', value: 'Option C' }
+  ];
 
-    // Build FormArray from dictionary
-    this.form.setControl('items', this.buildCheckboxArray(dict, preselected));
+  constructor(private fb: FormBuilder) {}
+
+  ngOnInit(): void {
+    this.form = this.fb.group({
+      selections: this.fb.array([]) // dynamiczna tablica checkboxów
+    });
+
+    this.addCheckboxes();
   }
 
-  // Convenience getter for template access
-  get items(): FormArray<FormGroup<CheckboxItemGroup>> {
-    return this.form.get('items') as FormArray<FormGroup<CheckboxItemGroup>>;
-  }
-
-  buildCheckboxArray(dict: Dictionary, preselectedKeys: string[] = []): FormArray<FormGroup<CheckboxItemGroup>> {
-    // Create a FormGroup per dictionary entry
-    const groups = Object.entries(dict).map(([key, label]) =>
-      this.fb.group<CheckboxItemGroup>({
-        // Store the key and label as string controls (read-only in UI, but kept in the form for easy access)
-        key: new FormControl(key, { nonNullable: true, validators: [Validators.required] }),
-        label: new FormControl(label, { nonNullable: true, validators: [Validators.required] }),
-        // The actual checkbox value
-        checked: new FormControl(preselectedKeys.includes(key), { nonNullable: true }),
-      })
+  // Add one checkbox control for each option
+  private addCheckboxes(): void {
+    this.options.forEach(() =>
+      (this.selectionsFormArray.push(this.fb.control(false)))
     );
-
-    return this.fb.array<FormGroup<CheckboxItemGroup>>(groups);
   }
 
-  trackByIndex(index: number): number {
-    // Simple and efficient trackBy for *ngFor
-    return index;
+  // Helper getter
+  get selectionsFormArray(): FormArray {
+    return this.form.get('selections') as FormArray;
   }
 
+  // Extract selected keys
   getSelectedKeys(): string[] {
-    // Returns all keys which are currently checked
-    return this.items.controls
-      .filter(group => group.controls.checked.value === true)
-      .map(group => group.controls.key.value);
+    return this.form.value.selections
+      .map((checked: boolean, i: number) => checked ? this.options[i].key : null)
+      .filter((v: string | null) => v !== null) as string[];
   }
 
+  // Simulate sending to API
   onSubmit(): void {
-    // Example submit handler
-    const selected = this.getSelectedKeys();
-    console.log('Selected keys:', selected);
-    // TODO: handle the result as needed (send to API, etc.)
+    const selectedKeys = this.getSelectedKeys();
+    console.log('Send to API:', selectedKeys);
   }
 }
-
-
---------------------------------------
 
 
 <form [formGroup]="form" (ngSubmit)="onSubmit()">
-  <div formArrayName="items">
-    <ng-container
-      *ngFor="let group of items.controls; let i = index; trackBy: trackByIndex"
-      [formGroupName]="i"
-    >
-      <div class="flex items-center gap-2 py-1">
-        <!-- Use a stable id derived from the key to tie input and label -->
-        <input
-          type="checkbox"
-          formControlName="checked"
-          [id]="'chk-' + group.controls.key.value"
-        />
-        <label
-          class="cursor-pointer"
-          [for]="'chk-' + group.controls.key.value"
-        >
-          {{ group.controls.label.value }}
-        </label>
-      </div>
-    </ng-container>
+  <div formArrayName="selections">
+    <div *ngFor="let option of options; let i = index">
+      <label>
+        <input type="checkbox" [formControlName]="i" />
+        {{ option.value }}
+      </label>
+    </div>
   </div>
 
-  <button type="submit">Save</button>
+  <button type="submit">Submit</button>
 </form>
