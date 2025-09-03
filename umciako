@@ -1,3 +1,79 @@
+[Authorize(Roles = Roles.BasicPreset)]
+[ApiController]
+[Route("api/[controller]")]
+public class BalanceDocumentController : ControllerBase
+{
+    private readonly ICmkowiNHelperService _cmkowiNHelperService;
+    private readonly ILogger<BalanceDocumentController> _logger;
+
+    public BalanceDocumentController(
+        ICmkowiNHelperService cmkowiNHelperService,
+        ILogger<BalanceDocumentController> logger)
+    {
+        _cmkowiNHelperService = cmkowiNHelperService;
+        _logger = logger;
+    }
+
+    [HttpGet("zsw")]
+    [ProducesResponseType(typeof(ZswBalanceDocument), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<ZswBalanceDocument>> GetZswBalanceDocument([FromQuery] string barcodeId)
+    {
+        if (!IsValidInput(barcodeId, 50)) // ograniczenie długości
+            return BadRequest("Invalid barcodeId.");
+
+        try
+        {
+            var result = await _cmkowiNHelperService.GetZswBalanceDocument(barcodeId);
+            return result is not null ? Ok(result) : NotFound();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error while fetching ZSW balance document for barcodeId {BarcodeId}", barcodeId);
+            return StatusCode(StatusCodes.Status500InternalServerError, "Unexpected error occurred.");
+        }
+    }
+
+    [HttpGet("pkkb")]
+    [ProducesResponseType(typeof(KkbBalanceDocument), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<KkbBalanceDocument>> GetPkkbBalanceDocument([FromQuery] string documentId)
+    {
+        if (!IsValidInput(documentId, 50)) // ograniczenie długości
+            return BadRequest("Invalid documentId.");
+
+        try
+        {
+            var result = await _cmkowiNHelperService.GetPkkbBalanceDocument(documentId);
+            return result is not null ? Ok(result) : NotFound();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error while fetching PKKB balance document for documentId {DocumentId}", documentId);
+            return StatusCode(StatusCodes.Status500InternalServerError, "Unexpected error occurred.");
+        }
+    }
+
+    // 🔐 Walidacja parametrów wejściowych – prosta i szybka ochrona
+    private static bool IsValidInput(string input, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return false;
+        if (input.Length > maxLength) return false;
+
+        // Zezwalamy tylko na litery, cyfry i kilka bezpiecznych znaków
+        return input.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.');
+    }
+}
+
+
+
+
 import { Component, OnInit } from '@angular/core';
 import { FormBuilder, FormArray, FormGroup, FormControl } from '@angular/forms';
 
