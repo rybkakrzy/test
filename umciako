@@ -1,3 +1,102 @@
+using NUnit.Framework;
+using System;
+
+namespace YourApp.Tests
+{
+    [TestFixture]
+    public class BankAccountFormatterTests
+    {
+        private BankAccountFormatter _sut;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _sut = new BankAccountFormatter();
+        }
+
+        // ============================
+        // NEGATIVE CASES
+        // ============================
+
+        [TestCase(null)]
+        [TestCase("")]
+        [TestCase(" ")]
+        public void FormatBankAccountNumber_WhenNullOrWhitespace_ThrowsArgumentException(string input)
+        {
+            // Act
+            var ex = Assert.Throws<ArgumentException>(() => _sut.FormatBankAccountNumber(input));
+
+            // Assert
+            Assert.Multiple(() =>
+            {
+                Assert.That(ex, Is.Not.Null);
+                Assert.That(ex!.Message, Does.Contain("nie może być pusty"));
+            });
+        }
+
+        [TestCase("1")]
+        public void FormatBankAccountNumber_WhenTooShort_ThrowsArgumentException(string input)
+        {
+            // Act
+            var ex = Assert.Throws<ArgumentException>(() => _sut.FormatBankAccountNumber(input));
+
+            // Assert
+            Assert.Multiple(() =>
+            {
+                Assert.That(ex, Is.Not.Null);
+                Assert.That(ex!.Message, Does.Contain("co najmniej 2"));
+            });
+        }
+
+        // ============================
+        // POSITIVE CASES
+        // ============================
+
+        [TestCase("12", "12 ")]                       // minimal case
+        [TestCase("123", "12 3")]                     // 1 digit in rest
+        [TestCase("12345", "12 345")]                 // 3 digits in rest
+        [TestCase("123456", "12 3456")]               // exactly 4 digits in rest
+        [TestCase("1234567", "12 3456 7")]            // 5 digits in rest
+        [TestCase("1234567890", "12 3456 7890")]      // multiple full groups
+        [TestCase("12345678901234", "12 3456 7890 1234")] // multiple groups
+        [TestCase("12 34 56 78", "12 3456 78")]       // input with spaces
+        public void FormatBankAccountNumber_WhenValid_ReturnsExpected(string input, string expected)
+        {
+            // Act
+            var result = _sut.FormatBankAccountNumber(input);
+
+            // Assert
+            Assert.Multiple(() =>
+            {
+                Assert.That(result, Is.Not.Null);
+                Assert.That(result, Is.EqualTo(expected));
+            });
+        }
+
+        [Test]
+        public void FormatBankAccountNumber_WhenAlreadyFormatted_IsIdempotent()
+        {
+            // Arrange
+            var input = "12345678901234567890";
+            var once = _sut.FormatBankAccountNumber(input);
+
+            // Act
+            var twice = _sut.FormatBankAccountNumber(once);
+
+            // Assert
+            Assert.Multiple(() =>
+            {
+                Assert.That(twice, Is.EqualTo(once));
+                Assert.That(twice.Split(" ").Length, Is.GreaterThan(1));
+            });
+        }
+    }
+}
+
+
+
+---------------------------------
+
 [Authorize(Roles = Roles.BasicPreset)]
 [ApiController]
 [Route("api/[controller]")]
