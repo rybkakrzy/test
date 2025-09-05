@@ -1,5 +1,157 @@
 using NUnit.Framework;
 using System;
+using System.Globalization;
+
+namespace YourApp.Tests
+{
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class ToWordsTests
+    {
+        private IFormatterPolasService _sut;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _sut = new FormatterPolasService();
+        }
+
+        // ========================
+        // EXCEPTION CASES
+        // ========================
+
+        [Test]
+        public void ToWords_WhenAmountIsNull_ThrowsArgumentNullException()
+        {
+            object? amount = null;
+
+            var ex = Assert.Throws<ArgumentNullException>(() => _sut.ToWords(amount));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(ex, Is.Not.Null);
+                Assert.That(ex!.ParamName, Is.EqualTo("amount"));
+            });
+        }
+
+        [Test]
+        public void ToWords_WhenAmountNotConvertible_ThrowsArgumentException()
+        {
+            var ex = Assert.Throws<ArgumentException>(() => _sut.ToWords(new object()));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(ex, Is.Not.Null);
+                Assert.That(ex!.Message, Does.Contain("cannot be converted to a number"));
+            });
+        }
+
+        // ========================
+        // ZERO CASES
+        // ========================
+
+        [TestCase(0, "zero złotych, 00 groszy")]
+        [TestCase(0.00, "zero złotych, 00 groszy")]
+        public void ToWords_WhenZero_ReturnsCorrectText(decimal input, string expected)
+        {
+            var result = _sut.ToWords(input);
+
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        // ========================
+        // SIMPLE NUMBERS
+        // ========================
+
+        [TestCase(1, "jeden złoty, 00 groszy")]
+        [TestCase(2, "dwa złote, 00 groszy")]
+        [TestCase(5, "pięć złotych, 00 groszy")]
+        [TestCase(12, "dwanaście złotych, 00 groszy")]
+        [TestCase(21, "dwadzieścia jeden złotych, 00 groszy")]
+        [TestCase(101, "sto jeden złotych, 00 groszy")]
+        public void ToWords_WhenInteger_ReturnsCorrectPolishGrammar(decimal input, string expected)
+        {
+            var result = _sut.ToWords(input);
+
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        // ========================
+        // FRACTIONS / GROSZE
+        // ========================
+
+        [TestCase(1.01, "jeden złoty, 01 grosz")]
+        [TestCase(1.02, "jeden złoty, 02 grosze")]
+        [TestCase(1.05, "jeden złoty, 05 groszy")]
+        [TestCase(2.50, "dwa złote, 50 groszy")]
+        [TestCase(12.99, "dwanaście złotych, 99 groszy")]
+        public void ToWords_WhenDecimal_ReturnsCorrectWithGrosze(decimal input, string expected)
+        {
+            var result = _sut.ToWords(input);
+
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        // ========================
+        // LARGE NUMBERS
+        // ========================
+
+        [TestCase(1000, "jeden tysiąc złotych, 00 groszy")]
+        [TestCase(2000, "dwa tysiące złotych, 00 groszy")]
+        [TestCase(5000, "pięć tysięcy złotych, 00 groszy")]
+        [TestCase(1000000, "jeden milion złotych, 00 groszy")]
+        [TestCase(2000000, "dwa miliony złotych, 00 groszy")]
+        [TestCase(5000000, "pięć milionów złotych, 00 groszy")]
+        public void ToWords_WhenLargeNumber_ReturnsExpected(decimal input, string expected)
+        {
+            var result = _sut.ToWords(input);
+
+            Assert.That(result, Is.EqualTo(expected));
+        }
+
+        // ========================
+        // CULTURE INDEPENDENCE
+        // ========================
+
+        [Test]
+        public void ToWords_ShouldBeCultureInvariant()
+        {
+            var previous = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = new CultureInfo("en-US");
+
+                var result = _sut.ToWords(1234.56m);
+
+                Assert.That(result, Is.EqualTo("jeden tysiąc dwieście trzydzieści cztery złote, 56 groszy"));
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previous;
+            }
+        }
+
+        // ========================
+        // EDGE CASES
+        // ========================
+
+        [TestCase(1.999, "jeden złoty, 99 groszy")] // sprawdzenie zaokrąglenia groszy
+        [TestCase(999999999.99, "dziewięćset dziewięćdziesiąt dziewięć milionów dziewięćset dziewięćdziesiąt dziewięć tysięcy dziewięćset dziewięćdziesiąt dziewięć złotych, 99 groszy")]
+        public void ToWords_WhenEdgeCases_ReturnsExpected(decimal input, string expected)
+        {
+            var result = _sut.ToWords(input);
+
+            Assert.That(result, Is.EqualTo(expected));
+        }
+    }
+}
+
+
+---------------------------
+
+
+using NUnit.Framework;
+using System;
 
 namespace YourApp.Tests
 {
