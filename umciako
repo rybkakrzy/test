@@ -1,46 +1,42 @@
-[TestFixture]
-public class FormatterPolasServiceTests
+public byte[] CreateZipArchive(List<DocxFile> files, params string[] formats)
 {
-    private IFormatterPolasService _sut;
+    if (files == null)
+        throw new ArgumentNullException(nameof(files));
 
-    [SetUp]
-    public void SetUp()
+    using var memoryStream = new MemoryStream();
+    using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, leaveOpen: true, Encoding.UTF8))
     {
-        _sut = new FormatterPolasService();
-    }
-
-    [Test]
-    public void ToWords_WhenAmountIsNull_ThrowsArgumentNullException()
-    {
-        int? amount = null;
-
-        var ex = Assert.Throws<ArgumentNullException>(() => _sut.ToWords(amount));
-
-        Assert.Multiple(() =>
+        foreach (var file in files)
         {
-            Assert.That(ex, Is.Not.Null);
-            Assert.That(ex!.ParamName, Is.EqualTo("amount"));
-        });
+            // DOCX export
+            if (formats.Contains("docx", StringComparer.OrdinalIgnoreCase))
+            {
+                AddFileToArchive(archive, $"{file.Name}.docx", file.Content);
+            }
+
+            // PDF export
+            if (formats.Contains("pdf", StringComparer.OrdinalIgnoreCase))
+            {
+                var pdfReport = _msService.TryGeneratePdfReport(file.Content);
+                if (pdfReport != null)
+                {
+                    AddFileToArchive(archive, $"{file.Name}.pdf", pdfReport);
+                }
+            }
+        }
     }
 
-    [TestCase(true)]             // bool
-    [TestCase(false)]            // bool
-    [TestCase('x')]              // char
-    [TestCaseSource(nameof(GetDateTimes))] // DateTime
-    public void ToWords_WhenNotConvertibleToDecimal_ThrowsArgumentException(IConvertible value)
-    {
-        var ex = Assert.Throws<ArgumentException>(() => _sut.ToWords(value));
+    return memoryStream.ToArray();
+}
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ex, Is.Not.Null);
-            Assert.That(ex!.Message, Does.Contain("cannot be converted to a number"));
-        });
-    }
+/// <summary>
+/// Adds a file to the given zip archive.
+/// </summary>
+private static void AddFileToArchive(ZipArchive archive, string entryName, byte[] content)
+{
+    var zipEntry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
 
-    private static IEnumerable<DateTime> GetDateTimes()
-    {
-        yield return DateTime.Now;
-        yield return new DateTime(2000, 1, 1);
-    }
+    using var entryStream = zipEntry.Open();
+    using var fileContentStream = new MemoryStream(content);
+    fileContentStream.CopyTo(entryStream);
 }
