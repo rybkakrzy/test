@@ -1,42 +1,9 @@
-public byte[] CreateZipArchive(List<DocxFile> files, params string[] formats)
-{
-    if (files == null)
-        throw new ArgumentNullException(nameof(files));
+function toNumber(value: string): number | null {
+  if (!value) return null;
 
-    using var memoryStream = new MemoryStream();
-    using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, leaveOpen: true, Encoding.UTF8))
-    {
-        foreach (var file in files)
-        {
-            // DOCX export
-            if (formats.Contains("docx", StringComparer.OrdinalIgnoreCase))
-            {
-                AddFileToArchive(archive, $"{file.Name}.docx", file.Content);
-            }
+  // usuwa wszystkie spacje
+  const cleaned = value.replace(/\s/g, "").replace(",", ".");
+  const num = Number(cleaned);
 
-            // PDF export
-            if (formats.Contains("pdf", StringComparer.OrdinalIgnoreCase))
-            {
-                var pdfReport = _msService.TryGeneratePdfReport(file.Content);
-                if (pdfReport != null)
-                {
-                    AddFileToArchive(archive, $"{file.Name}.pdf", pdfReport);
-                }
-            }
-        }
-    }
-
-    return memoryStream.ToArray();
-}
-
-/// <summary>
-/// Adds a file to the given zip archive.
-/// </summary>
-private static void AddFileToArchive(ZipArchive archive, string entryName, byte[] content)
-{
-    var zipEntry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
-
-    using var entryStream = zipEntry.Open();
-    using var fileContentStream = new MemoryStream(content);
-    fileContentStream.CopyTo(entryStream);
+  return isNaN(num) ? null : num;
 }
