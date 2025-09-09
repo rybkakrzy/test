@@ -1,3 +1,45 @@
+public async Task<List<IaoTrlGetFacResponse.IaoTrlGetFac>> GetAllFacilitiesRecursiveAsync(
+    string clientNumber,
+    string facIsMore = "",
+    int facFromMx = 0)
+{
+    // Prepare request
+    var request = new APIServices.ICBS.ICBSKnt.Models.GetFacilListsForCustExtend.IaoTrlGetFacRequest
+    {
+        fxCust = clientNumber,
+        facIsMore = facIsMore,
+        facFromMx = facFromMx
+    };
+
+    // Call API
+    var response = await _api.GetAllFacilListsForCustExtend(request);
+
+    // Collect current batch
+    var facilities = new List<IaoTrlGetFacResponse.IaoTrlGetFac>();
+    if (response?.iaoTrlGetFacTab != null)
+    {
+        facilities.AddRange(response.iaoTrlGetFacTab);
+    }
+
+    // If API says there is more, recurse with updated cursor
+    if (response?.facIsMore == "T")
+    {
+        var nextBatch = await GetAllFacilitiesRecursiveAsync(
+            clientNumber,
+            response.facIsMore,
+            response.facFromMx);
+
+        facilities.AddRange(nextBatch);
+    }
+
+    return facilities;
+}
+
+
+
+
+
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
