@@ -1,9 +1,130 @@
-function toNumber(value: string): number | null {
-  if (!value) return null;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
-  // usuwa wszystkie spacje
-  const cleaned = value.replace(/\s/g, "").replace(",", ".");
-  const num = Number(cleaned);
+public sealed class ObligationsService
+{
+    private readonly ICmkowrApi _api;
 
-  return isNaN(num) ? null : num;
+    public ObligationsService(ICmkowrApi api)
+    {
+        _api = api;
+    }
+
+    public async Task<IReadOnlyList<ObligationDto>> FillObligationsAsync(
+        string kkr,
+        CancellationToken ct = default)
+    {
+        // 1) Recursively fetch all facilities (handles pagination)
+        var facilities = await GetAllFacilitiesRecursiveAsync(kkr, ct);
+
+        // 2) Option A (faster): run requests in parallel
+        var perFacilityTasks = facilities.Select(f => _api.GetObligationsForFacilityAsync(f.Id, ct));
+        var perFacilityResults = await Task.WhenAll(perFacilityTasks);
+
+        // 3) Flatten to a single list
+        var all = perFacilityResults.SelectMany(x => x).ToList();
+        return all;
+    }
+
+    // If you explicitly want recursion for step (2) as well, use this instead of the parallel block above:
+    private async Task<List<ObligationDto>> GetObligationsRecursiveAsync(
+        IReadOnlyList<FacilityDto> facilities,
+        int index,
+        List<ObligationDto> acc,
+        CancellationToken ct)
+    {
+        // Base case: processed all facilities
+        if (index >= facilities.Count)
+            return acc;
+
+        // Process current facility
+        var current = facilities[index];
+        var items = await _api.GetObligationsForFacilityAsync(current.Id, ct);
+        acc.AddRange(items);
+
+        // Recurse to the next facility
+        return await GetObligationsRecursiveAsync(facilities, index + 1, acc, ct);
+    }
+
+    // Public wrapper that hides pagination cursor and accumulator details
+    private Task<List<FacilityDto>> GetAllFacilitiesRecursiveAsync(
+        string kkr,
+        CancellationToken ct)
+    {
+        return GetFacilitiesCoreAsync(
+            kkr: kkr,
+            cursor: null,
+            acc: new List<FacilityDto>(),
+            depth: 0,
+            ct: ct);
+    }
+
+    // Depth-first recursion over paginated API
+    private async Task<List<FacilityDto>> GetFacilitiesCoreAsync(
+        string kkr,
+        string? cursor,
+        List<FacilityDto> acc,
+        int depth,
+        CancellationToken ct)
+    {
+        // Safety guard to avoid infinite recursion if the API keeps returning "hasMore = true"
+        const int maxDepth = 100_000; // adjust to your constraints
+        if (depth > maxDepth)
+            throw new InvalidOperationException("Pagination depth limit exceeded.");
+
+        // Fetch single page
+        // Assumption: API returns (items, hasMore, nextCursor)
+        var page = await _api.GetFacilitiesPageAsync(kkr, cursor, ct);
+
+        // Accumulate current page
+        acc.AddRange(page.Items);
+
+        // Base case: no more pages
+        if (!page.HasMore)
+            return acc;
+
+        // Recursive step: continue with next cursor
+        return await GetFacilitiesCoreAsync(
+            kkr: kkr,
+            cursor: page.NextCursor,
+            acc: acc,
+            depth: depth + 1,
+            ct: ct);
+    }
+}
+
+/* -------------------------
+ * Contracts / DTO examples
+ * ------------------------- */
+
+public interface ICmkowrApi
+{
+    // Returns a single page of facilities with pagination data
+    Task<FacilitiesPage> GetFacilitiesPageAsync(string kkr, string? cursor, CancellationToken ct);
+
+    // Returns obligations for a given facility
+    Task<IReadOnlyList<ObligationDto>> GetObligationsForFacilityAsync(string facilityId, CancellationToken ct);
+}
+
+public sealed class FacilitiesPage
+{
+    public List<FacilityDto> Items { get; init; } = new();
+    public bool HasMore { get; init; }
+    public string? NextCursor { get; init; }
+}
+
+public sealed class FacilityDto
+{
+    public string Id { get; init; } = "";
+    public string? Name { get; init; }
+}
+
+public sealed class ObligationDto
+{
+    public string Id { get; init; } = "";
+    public string? Type { get; init; }
+    public decimal Amount { get; init; }
 }
