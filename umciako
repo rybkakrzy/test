@@ -1,3 +1,52 @@
+public class CmkowirCommonService : ICmkowirHelperService
+{
+    private const string ContractPrefixSingular = "Umowa";
+    private const string ContractPrefixPlural = "Umowy";
+
+    private readonly Dictionary<int, string> ContractNameTemplates = new()
+    {
+        { 535, "{prefix} nr {numer} o kredyt złotowy w rachunku bankowym" },
+        { 781, "{prefix} nr {numer} o kredyt dewizowy w rachunku bankowym" },
+        { 770, "{prefix} nr {numer} o Pożyczkę Korporacyjną w złotych" },
+        { 645, "{prefix} nr {numer} o Pożyczkę Korporacyjną w złotych" },
+        { 430, "{prefix} Wieloproduktowa nr {numer}" },
+        { 429, "{prefix} Wieloproduktowa nr {numer}" },
+        { 350, "{prefix} nr {numer} o kredyt złotowy w rachunku bankowym" },
+        { 518, "{prefix} nr {numer} o kredyt złotowy obrotowy w formie linii odnawialnej" },
+        { 436, "{prefix} nr {numer} o kredyt złotowy obrotowy w formie linii odnawialnej" },
+        { 437, "{prefix} restrukturyzacyjna nr {numer}" },
+        { 648, "{prefix} restrukturyzacyjna nr {numer}" }
+    };
+
+    public string TakeContractName(int productCode, string contractNumber, DateTime? contractDate, bool usePlural = false)
+    {
+        if (ContractNameTemplates.TryGetValue(productCode, out var template))
+        {
+            // Choose prefix
+            var prefix = usePlural ? ContractPrefixPlural : ContractPrefixSingular;
+
+            // Replace placeholders
+            var longName = template.Replace("{prefix}", prefix)
+                                   .Replace("{numer}", contractNumber);
+
+            if (contractDate != null)
+            {
+                longName += $" z dnia {contractDate:dd.MM.yyyy} r.";
+            }
+
+            return longName;
+        }
+
+        return $">>> wskaż nazwę dla produktu: {productCode} <<<";
+    }
+}
+
+
+
+
+
+
+
 public async Task<List<IaoTrlGetFacResponse.IaoTrlGetFac>> GetAllFacilitiesRecursiveAsync(
     string clientNumber,
     string facIsMore = "",
