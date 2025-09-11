@@ -1,3 +1,58 @@
+
+public string TakeContractName(
+    int productCode, 
+    string contractNumber, 
+    DateTime contractDate, 
+    bool useVerwal = false)
+{
+    string template;
+
+    // Choose template based on productCode
+    switch (productCode)
+    {
+        case 150:
+        case 63:
+            template = "{prefix} - {contractNumber}";
+            break;
+
+        case 64:
+            template = "{prefix} - {contractNumber} ({date})";
+            break;
+
+        default:
+            template = "{prefix} - {contractNumber}";
+            break;
+    }
+
+    // Choose prefix
+    string prefix = productCode switch
+    {
+        150 => useVerwal ? "Umowa ESTWurzEzhWl" : "Umowa HallProduktów",
+        63  => "Umowa Produktów",
+        64  => "Umowa Strukturyczna",
+        _   => "Umowa"
+    };
+
+    // Replace placeholders
+    string result = template
+        .Replace("{prefix}", prefix)
+        .Replace("{contractNumber}", contractNumber);
+
+    if (template.Contains("{date}"))
+    {
+        result = result.Replace("{date}", contractDate.ToString("dd.MM.yyyy"));
+    }
+
+    return result;
+}
+
+
+
+
+
+
+
+
 public class CmkowirCommonService : ICmkowirHelperService
 {
     private const string ContractPrefixSingular = "Umowa";
