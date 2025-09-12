@@ -1,276 +1,60 @@
-
-public string TakeContractName(
-    int productCode, 
-    string contractNumber, 
-    DateTime contractDate, 
-    bool useVerwal = false)
+private List<ZswBalanceDocument> ReadBalanceDocument(byte[] excelContent, string documentId)
 {
-    string template;
+    var documents = new List<ZswBalanceDocument>();
 
-    // Choose template based on productCode
-    switch (productCode)
+    using var stream = new MemoryStream(excelContent);
+    using var document = SpreadsheetDocument.Open(stream, isEditable: false);
+
+    var workbookPart = document.WorkbookPart;
+    var sheet = workbookPart.Workbook.Sheets.Elements<Sheet>().First();
+    var worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
+
+    var sharedStringTable = workbookPart.SharedStringTablePart.SharedStringTable;
+
+    string GetCellValue(string cellReference, Row row)
     {
-        case 150:
-        case 63:
-            template = "{prefix} - {contractNumber}";
-            break;
+        var cell = row.Elements<Cell>()
+            .FirstOrDefault(c => c.CellReference?.Value.StartsWith(cellReference) == true);
 
-        case 64:
-            template = "{prefix} - {contractNumber} ({date})";
-            break;
+        if (cell == null || cell.CellValue == null)
+            return string.Empty;
 
-        default:
-            template = "{prefix} - {contractNumber}";
-            break;
-    }
+        var value = cell.CellValue.InnerText;
 
-    // Choose prefix
-    string prefix = productCode switch
-    {
-        150 => useVerwal ? "Umowa ESTWurzEzhWl" : "Umowa HallProduktów",
-        63  => "Umowa Produktów",
-        64  => "Umowa Strukturyczna",
-        _   => "Umowa"
-    };
-
-    // Replace placeholders
-    string result = template
-        .Replace("{prefix}", prefix)
-        .Replace("{contractNumber}", contractNumber);
-
-    if (template.Contains("{date}"))
-    {
-        result = result.Replace("{date}", contractDate.ToString("dd.MM.yyyy"));
-    }
-
-    return result;
-}
-
-
-
-
-
-
-
-
-public class CmkowirCommonService : ICmkowirHelperService
-{
-    private const string ContractPrefixSingular = "Umowa";
-    private const string ContractPrefixPlural = "Umowy";
-
-    private readonly Dictionary<int, string> ContractNameTemplates = new()
-    {
-        { 535, "{prefix} nr {numer} o kredyt złotowy w rachunku bankowym" },
-        { 781, "{prefix} nr {numer} o kredyt dewizowy w rachunku bankowym" },
-        { 770, "{prefix} nr {numer} o Pożyczkę Korporacyjną w złotych" },
-        { 645, "{prefix} nr {numer} o Pożyczkę Korporacyjną w złotych" },
-        { 430, "{prefix} Wieloproduktowa nr {numer}" },
-        { 429, "{prefix} Wieloproduktowa nr {numer}" },
-        { 350, "{prefix} nr {numer} o kredyt złotowy w rachunku bankowym" },
-        { 518, "{prefix} nr {numer} o kredyt złotowy obrotowy w formie linii odnawialnej" },
-        { 436, "{prefix} nr {numer} o kredyt złotowy obrotowy w formie linii odnawialnej" },
-        { 437, "{prefix} restrukturyzacyjna nr {numer}" },
-        { 648, "{prefix} restrukturyzacyjna nr {numer}" }
-    };
-
-    public string TakeContractName(int productCode, string contractNumber, DateTime? contractDate, bool usePlural = false)
-    {
-        if (ContractNameTemplates.TryGetValue(productCode, out var template))
+        if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
         {
-            // Choose prefix
-            var prefix = usePlural ? ContractPrefixPlural : ContractPrefixSingular;
-
-            // Replace placeholders
-            var longName = template.Replace("{prefix}", prefix)
-                                   .Replace("{numer}", contractNumber);
-
-            if (contractDate != null)
-            {
-                longName += $" z dnia {contractDate:dd.MM.yyyy} r.";
-            }
-
-            return longName;
+            var index = int.Parse(value);
+            return sharedStringTable.ElementAt(index).InnerText;
         }
 
-        return $">>> wskaż nazwę dla produktu: {productCode} <<<";
-    }
-}
-
-
-
-
-
-
-
-public async Task<List<IaoTrlGetFacResponse.IaoTrlGetFac>> GetAllFacilitiesRecursiveAsync(
-    string clientNumber,
-    string facIsMore = "",
-    int facFromMx = 0)
-{
-    // Prepare request
-    var request = new APIServices.ICBS.ICBSKnt.Models.GetFacilListsForCustExtend.IaoTrlGetFacRequest
-    {
-        fxCust = clientNumber,
-        facIsMore = facIsMore,
-        facFromMx = facFromMx
-    };
-
-    // Call API
-    var response = await _api.GetAllFacilListsForCustExtend(request);
-
-    // Collect current batch
-    var facilities = new List<IaoTrlGetFacResponse.IaoTrlGetFac>();
-    if (response?.iaoTrlGetFacTab != null)
-    {
-        facilities.AddRange(response.iaoTrlGetFacTab);
+        return value;
     }
 
-    // If API says there is more, recurse with updated cursor
-    if (response?.facIsMore == "T")
+    // Iterujemy po wszystkich wierszach
+    foreach (var row in worksheetPart.Worksheet.Descendants<Row>())
     {
-        var nextBatch = await GetAllFacilitiesRecursiveAsync(
-            clientNumber,
-            response.facIsMore,
-            response.facFromMx);
+        // tu możesz sprawdzić np. numer wiersza i pominąć nagłówki
+        if (row.RowIndex.Value < 3) // pomijamy nagłówki
+            continue;
 
-        facilities.AddRange(nextBatch);
+        var balanceDoc = new ZswBalanceDocument
+        {
+            DocumentId = documentId,
+            ShortAccountNumber = GetCellValue("A", row),
+            BalanceAtDate = ParseDate(GetCellValue("B", row)),
+            TotalCapital = Math.Round(ParseDecimal(GetCellValue("C", row)), 2),
+            DueCapital = Math.Round(ParseDecimal(GetCellValue("D", row)), 2),
+            ContractualInterest = Math.Round(ParseDecimal(GetCellValue("E", row)), 2),
+            DueInterest = Math.Round(ParseDecimal(GetCellValue("F", row)), 2),
+            DefaultInterest = Math.Round(ParseDecimal(GetCellValue("G", row)), 2),
+            FeesOrCommissions = Math.Round(ParseDecimal(GetCellValue("H", row)), 2),
+            TotalRepaymentAmount = Math.Round(ParseDecimal(GetCellValue("I", row)), 2),
+            Currency = GetCellValue("J", row),
+            DueDate = ParseDate(GetCellValue("K", row))
+        };
+
+        documents.Add(balanceDoc);
     }
 
-    return facilities;
-}
-
-
-
-
-
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-
-public sealed class ObligationsService
-{
-    private readonly ICmkowrApi _api;
-
-    public ObligationsService(ICmkowrApi api)
-    {
-        _api = api;
-    }
-
-    public async Task<IReadOnlyList<ObligationDto>> FillObligationsAsync(
-        string kkr,
-        CancellationToken ct = default)
-    {
-        // 1) Recursively fetch all facilities (handles pagination)
-        var facilities = await GetAllFacilitiesRecursiveAsync(kkr, ct);
-
-        // 2) Option A (faster): run requests in parallel
-        var perFacilityTasks = facilities.Select(f => _api.GetObligationsForFacilityAsync(f.Id, ct));
-        var perFacilityResults = await Task.WhenAll(perFacilityTasks);
-
-        // 3) Flatten to a single list
-        var all = perFacilityResults.SelectMany(x => x).ToList();
-        return all;
-    }
-
-    // If you explicitly want recursion for step (2) as well, use this instead of the parallel block above:
-    private async Task<List<ObligationDto>> GetObligationsRecursiveAsync(
-        IReadOnlyList<FacilityDto> facilities,
-        int index,
-        List<ObligationDto> acc,
-        CancellationToken ct)
-    {
-        // Base case: processed all facilities
-        if (index >= facilities.Count)
-            return acc;
-
-        // Process current facility
-        var current = facilities[index];
-        var items = await _api.GetObligationsForFacilityAsync(current.Id, ct);
-        acc.AddRange(items);
-
-        // Recurse to the next facility
-        return await GetObligationsRecursiveAsync(facilities, index + 1, acc, ct);
-    }
-
-    // Public wrapper that hides pagination cursor and accumulator details
-    private Task<List<FacilityDto>> GetAllFacilitiesRecursiveAsync(
-        string kkr,
-        CancellationToken ct)
-    {
-        return GetFacilitiesCoreAsync(
-            kkr: kkr,
-            cursor: null,
-            acc: new List<FacilityDto>(),
-            depth: 0,
-            ct: ct);
-    }
-
-    // Depth-first recursion over paginated API
-    private async Task<List<FacilityDto>> GetFacilitiesCoreAsync(
-        string kkr,
-        string? cursor,
-        List<FacilityDto> acc,
-        int depth,
-        CancellationToken ct)
-    {
-        // Safety guard to avoid infinite recursion if the API keeps returning "hasMore = true"
-        const int maxDepth = 100_000; // adjust to your constraints
-        if (depth > maxDepth)
-            throw new InvalidOperationException("Pagination depth limit exceeded.");
-
-        // Fetch single page
-        // Assumption: API returns (items, hasMore, nextCursor)
-        var page = await _api.GetFacilitiesPageAsync(kkr, cursor, ct);
-
-        // Accumulate current page
-        acc.AddRange(page.Items);
-
-        // Base case: no more pages
-        if (!page.HasMore)
-            return acc;
-
-        // Recursive step: continue with next cursor
-        return await GetFacilitiesCoreAsync(
-            kkr: kkr,
-            cursor: page.NextCursor,
-            acc: acc,
-            depth: depth + 1,
-            ct: ct);
-    }
-}
-
-/* -------------------------
- * Contracts / DTO examples
- * ------------------------- */
-
-public interface ICmkowrApi
-{
-    // Returns a single page of facilities with pagination data
-    Task<FacilitiesPage> GetFacilitiesPageAsync(string kkr, string? cursor, CancellationToken ct);
-
-    // Returns obligations for a given facility
-    Task<IReadOnlyList<ObligationDto>> GetObligationsForFacilityAsync(string facilityId, CancellationToken ct);
-}
-
-public sealed class FacilitiesPage
-{
-    public List<FacilityDto> Items { get; init; } = new();
-    public bool HasMore { get; init; }
-    public string? NextCursor { get; init; }
-}
-
-public sealed class FacilityDto
-{
-    public string Id { get; init; } = "";
-    public string? Name { get; init; }
-}
-
-public sealed class ObligationDto
-{
-    public string Id { get; init; } = "";
-    public string? Type { get; init; }
-    public decimal Amount { get; init; }
+    return documents;
 }
