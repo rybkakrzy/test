@@ -30,18 +30,39 @@ private List<ZswBalanceDocument> ReadBalanceDocument(byte[] excelContent, string
         return value;
     }
 
-    // Iterujemy po wszystkich wierszach
+    string GetCellValue(string cellReference)
+    {
+        var cell = worksheetPart.Worksheet.Descendants<Cell>()
+            .FirstOrDefault(c => c.CellReference?.Value == cellReference);
+
+        if (cell == null || cell.CellValue == null)
+            return string.Empty;
+
+        var value = cell.CellValue.InnerText;
+
+        if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
+        {
+            var index = int.Parse(value);
+            return sharedStringTable.ElementAt(index).InnerText;
+        }
+
+        return value;
+    }
+
+    // 👇 najpierw odczytujemy saldo z nagłówka (np. B1)
+    var balanceAtDate = ParseDate(GetCellValue("B1"));
+
     foreach (var row in worksheetPart.Worksheet.Descendants<Row>())
     {
-        // tu możesz sprawdzić np. numer wiersza i pominąć nagłówki
-        if (row.RowIndex.Value < 3) // pomijamy nagłówki
+        // pomijamy nagłówki
+        if (row.RowIndex.Value < 3)
             continue;
 
         var balanceDoc = new ZswBalanceDocument
         {
             DocumentId = documentId,
             ShortAccountNumber = GetCellValue("A", row),
-            BalanceAtDate = ParseDate(GetCellValue("B", row)),
+            BalanceAtDate = balanceAtDate, // 👈 przepisywane do każdego obiektu
             TotalCapital = Math.Round(ParseDecimal(GetCellValue("C", row)), 2),
             DueCapital = Math.Round(ParseDecimal(GetCellValue("D", row)), 2),
             ContractualInterest = Math.Round(ParseDecimal(GetCellValue("E", row)), 2),
