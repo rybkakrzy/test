@@ -1,6 +1,43 @@
 resources:
   pipelines:
     - pipeline: autotest
+      source: P09811-Testing-Automation    # tu NAZWA pipeline z DevOps
+      project: P09811
+      trigger: none   # żeby nie triggerował się sam
+
+
+stages:
+- stage: QA_Tests
+  displayName: "QA UAT"
+  jobs:
+  - job: Run_Tests
+    steps:
+    - script: echo "Running autotest pipeline..."
+
+
+resources:
+  repositories:
+    - repository: autotest
+      type: git
+      name: P09811-testing-automation
+      ref: refs/heads/develop
+
+stages:
+- stage: QA_Tests
+  displayName: "QA UAT"
+  jobs:
+  - template: pipeline/jobs/run_tests.yml@autotest
+    parameters:
+      unittest: ${{ parameters.unittest }}
+      testprojs: ${{ parameters.testprojs }}
+
+
+
+
+
+resources:
+  pipelines:
+    - pipeline: autotest
       source: P09811-testing-automation
       project: P09811
       branch: develop
