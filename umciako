@@ -1,50 +1,19 @@
-trigger:
-- main
-
 resources:
   pipelines:
-  - pipeline: testsPipeline      # alias
-    source: Tests-CI             # nazwa pipeline z repo testowego
-    project: MyProject           # projekt w Azure DevOps
-    branch: main                 # z którego brancha uruchamiać testy
+    - pipeline: autotest
+      source: P09811-testing-automation
+      project: P09811
+      branch: develop
 
 stages:
-- stage: Build
-  jobs:
-  - job: BuildApp
-    steps:
-    - script: echo "Build application here"
-
-- stage: Run_Tests
-  dependsOn: Build
+- stage: qa_tests_uat
+  displayName: "QA UAT"
+  dependsOn: []
   jobs:
   - job: RunTests
     steps:
-    - script: echo "Triggering tests pipeline"
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        source: current
-    - task: PowerShell@2
-      inputs:
-        targetType: inline
-        script: |
-          echo "Here you could trigger the tests pipeline"
+    - script: echo "Trigger autotest pipeline"
 
-stages:
-- stage: Build
-  jobs:
-  - job: BuildApp
-    steps:
-    - script: echo "Build app..."
-
-- stage: Run_Tests
-  dependsOn: Build
-  jobs:
-  - job: TriggerTests
-    steps:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        source: testsPipeline
 
 
 
