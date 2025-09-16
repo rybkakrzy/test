@@ -30,6 +30,21 @@ stages:
         script: |
           echo "Here you could trigger the tests pipeline"
 
+stages:
+- stage: Build
+  jobs:
+  - job: BuildApp
+    steps:
+    - script: echo "Build app..."
+
+- stage: Run_Tests
+  dependsOn: Build
+  jobs:
+  - job: TriggerTests
+    steps:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        source: testsPipeline
 
 
 
