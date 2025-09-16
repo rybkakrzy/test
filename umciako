@@ -1,3 +1,38 @@
+trigger:
+- main
+
+resources:
+  pipelines:
+  - pipeline: testsPipeline      # alias
+    source: Tests-CI             # nazwa pipeline z repo testowego
+    project: MyProject           # projekt w Azure DevOps
+    branch: main                 # z którego brancha uruchamiać testy
+
+stages:
+- stage: Build
+  jobs:
+  - job: BuildApp
+    steps:
+    - script: echo "Build application here"
+
+- stage: Run_Tests
+  dependsOn: Build
+  jobs:
+  - job: RunTests
+    steps:
+    - script: echo "Triggering tests pipeline"
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        source: current
+    - task: PowerShell@2
+      inputs:
+        targetType: inline
+        script: |
+          echo "Here you could trigger the tests pipeline"
+
+
+
+
 private List<ZswBalanceDocument> ReadBalanceDocument(byte[] excelContent, string documentId)
 {
     var documents = new List<ZswBalanceDocument>();
