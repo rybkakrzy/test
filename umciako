@@ -1,3 +1,11 @@
+jobs:
+- job: run_tests
+  pool: 'BSK-only-tests-runner-pool'
+  steps:
+    - ${{ if eq(variables['Build.Repository.Name'], 'P09811-doc2') }}:
+        - checkout: autotest
+
+
 resources:
   pipelines:
     - pipeline: autotest
