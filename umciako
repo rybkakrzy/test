@@ -1,3 +1,19 @@
+✅ ☑️ ✔️ (testy zaliczone)
+
+🧪 (testy)
+
+🤖 (automaty/autotesty)
+
+🚀 (deploy)
+
+🔧 (build)
+
+🔥 (coś krytycznego)
+
+🐛 (debug / bugfix)
+
+
+
 jobs:
 - job: run_tests
   pool: 'BSK-only-tests-runner-pool'
