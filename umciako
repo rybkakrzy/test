@@ -1,3 +1,38 @@
+Jak to naprawić ✅
+
+Wystarczy, że ujednolicisz ścieżki. Najprościej popraw task publikacji, żeby wskazywał dokładnie tam, gdzie zapisujesz raporty:
+
+- task: PublishPipelineArtifact@1
+  inputs:
+    targetPath: '$(Build.ArtifactStagingDirectory)/test-report'
+    artifactName: 'test-report-UAT'
+    publishLocation: 'pipeline'
+  condition: succeededOrFailed()
+  displayName: 'Publish Artifacts'
+
+Dodatkowo (dla testów JUnit w ADO)
+
+Masz już PublishTestResults@2 na końcu, który wskazuje poprawnie na:
+
+testResultsFiles: '$(Build.ArtifactStagingDirectory)/test-results-UAT.xml'
+
+
+To jest OK – ten krok zajmuje się integracją wyników testów z Azure DevOps (pokazuje wyniki w zakładce Tests).
+A PublishPipelineArtifact służy tylko do tego, żeby wrzucić cały folder z raportami (np. Playwright z filmikami i screenshotami).
+
+TL;DR
+
+Zamień w PublishPipelineArtifact:
+
+targetPath: 'test-report'
+
+
+na:
+
+targetPath: '$(Build.ArtifactStagingDirectory)/test-report'
+
+
+
 - name: testsHeader
   type: string
   default: "──────── 🧪 TESTS ────────"
