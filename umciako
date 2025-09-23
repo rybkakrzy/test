@@ -1,3 +1,10 @@
+- name: dummyTests
+  type: string
+  default: ""
+  displayName: "──────── 🧪 TESTS ────────"
+
+
+
 🌍 Globusy / „coś globalnego”
 
 🌍 🌎 🌏 — globus (Europa/Afryka, Ameryki, Azja/Oceania)
