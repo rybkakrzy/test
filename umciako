@@ -1,3 +1,15 @@
+parameters:
+- name: runPlaywright
+  type: boolean
+  default: true
+  displayName: "🤖 Run Playwright after deploy"
+- name: runPerfOnUAT
+  type: boolean
+  default: true
+  displayName: "🏎️ Run performance tests on UAT"
+
+
+
 - name: dummyTests
   type: string
   default: ""
