@@ -1,177 +1,75 @@
 parameters:
-- name: runPlaywright
-  type: boolean
-  default: true
-  displayName: "🤖 Run Playwright after deploy"
-- name: runPerfOnUAT
-  type: boolean
-  default: true
-  displayName: "🏎️ Run performance tests on UAT"
-
-
-
-- name: dummyTests
-  type: string
-  default: ""
-  displayName: "──────── 🧪 TESTS ────────"
-
-
-
-🌍 Globusy / „coś globalnego”
-
-🌍 🌎 🌏 — globus (Europa/Afryka, Ameryki, Azja/Oceania)
-
-🌐 — „globe with meridians” (sieć/Internet)
-
-🗺️ — mapa
-
-🧭 — kompas (nawigacja/kierunek)
-
-✈️ — lot (release flight / rollout)
-
-🖥️ Monitory / komputery
-
-🖥️ — desktop (monitor)
-
-💻 — laptop
-
-⌨️ — klawiatura
-
-🖱️ — mysz
-
-🖨️ — drukarka
-
-☁️ Chmura / infrastruktura
-
-☁️ — chmura (ogólnie)
-
-🛰️ — satelita (CDN/telemetria)
-
-📡 — antena (sieć, telemetry/metrics)
-
-🔌 — wtyczka (integracje, połączenia)
-
-🧱 — firewall / granica (umownie)
-
-🛠️ Build / CI / narzędzia
-
-🔧 — wrench (build/fix)
-
-🛠️ — hammer & wrench (maintenance)
-
-⚙️ — gear (konfiguracja)
-
-🧰 — toolbox (narzędzia)
-
-🔩 — śruba (artefakty, zależności)
-
-🪛 — śrubokręt (prace techniczne)
-
-📦 Artefakty / publikacja
-
-📦 — paczka/artefakt
-
-📥 / 📤 — in/out (download/upload)
-
-🔗 — link (dependency, relacja)
-
-🏷️ — tag/release tag
-
-🧪 Testy / jakość
-
-🧪 — testy (unit/integration)
-
-🔬 — analiza (coverage, quality gate)
-
-🧫 — eksperyment (A/B, canary)
-
-📋 — checklist
-
-🔍 / 🔎 — lupa (inspekcja)
-
-📝 — notatka/raport
-
-📊 Monitoring / obserwowalność
-
-📈 / 📉 / 📊 — wykresy (trend, KPI, SLO)
-
-🔔 — alert
-
-⏱️ — stopwatch (czas odpowiedzi)
-
-⏳ / ⌛ — (oczekiwanie/timeout)
-
-🛰️ / 📡 — telemetry/metrics (jak wyżej)
-
-🔐 Bezpieczeństwo
-
-🔒 / 🔓 — lock/unlock
-
-🛡️ — tarcza (shield)
-
-🔑 / 🗝️ — klucz (sekrety, dostęp)
-
-🕵️ — detektyw (skan/analiza)
-
-🚫 / ⛔ — blokada/reguła
-
-🚀 Deploy / wydania
-
-🚀 — deploy/release
-
-🔄 / 🔁 — redeploy/rollout
-
-🔃 — retry/refresh
-
-🏁 — zakończenie/Go-Live
-
-🧭 — kierowanie ruchem (routing)
-
-🟢 Status / zdrowie
-
-🟢 🟡 🟠 🔴 — status (OK / warn / at risk / fail)
-
-✅ ☑️ ✔️ — zaliczone
-
-❌ ✖️ — fail/odrzucone
-
-⚠️ — ostrzeżenie
-
-ℹ️ — info
-
-🐛 Incydenty / awarie
-
-🐛 — bug
-
-🔥 — incydent/krytyk
-
-🚨 — alarm/incydent
-
-🧯 — gaszenie pożaru (hotfix)
-
-💥 — crash
-
-🗄️ Dane / repo / konfiguracja
-
-💾 — storage (dysk)
-
-🗄️ — szafka/archiwum (backup)
-
-🗂️ / 🗃️ — katalogi/konfiguracje
-
-📚 — dokumentacja
-
-🧩 — moduł/feature
-
-Szybka paczka „kopiuj-wklej”
-
-Globus/monitor: 🌐 🌍 🌎 🌏 🖥️ 💻
-Build: 🔧 🛠️ ⚙️ 🧰
-Testy: 🧪 🔬 📋 🔍
-Deploy: 🚀 🔄 🔁 🏁
-Monitoring: 📈 📉 📊 🔔
-Status: 🟢 🟡 🟠 🔴 ✅ ❌ ⚠️ ℹ️
-Security: 🔒 🛡️ 🔑 🕵️ 🚫
-Incydent: 🐛 🔥 🚨 🧯
-Artefakty: 📦 📥 📤 🔗 🏷️
-Sieć/telemetria: 📡 🛰️ 🔌
+  - name: testEnvironment
+    type: string
+    values:
+      - dev
+      - uat
+      - pre
+
+jobs:
+  - job: run_tests
+    displayName: "Run Playwright tests"
+    pool:
+      name: BSK-only-tests-runner-pool
+
+    variables:
+      artifactDir: "$(Build.ArtifactStagingDirectory)"
+      reportDir: "$(artifactDir)/test-report/playwright"
+      junitFile: "$(artifactDir)/test-results-$(parameters.testEnvironment).xml"
+
+    steps:
+      # Pobranie repo
+      - checkout: self
+        displayName: "Checkout repository"
+
+      # Sekret z KeyVault (DEV/ UAT / PRE)
+      - task: AzureKeyVault@2
+        inputs:
+          azureSubscription: "P09811-KeyVault-SVC-NONPROD"
+          KeyVaultName: "P09811-doc2-$(parameters.testEnvironment | toUpper)-KV"
+          SecretsFilter: "*"
+          RunAsPreJob: false
+        displayName: "Download secrets [${{ parameters.testEnvironment | toUpper }}]"
+
+      # Autoryzacja do prywatnego feeda PIP
+      - task: PipAuthenticate@1
+        inputs:
+          artifactFeeds: "IngOne/P09811-incoming-pypi"
+        displayName: "Authenticate Pip"
+
+      # Instalacja zależności + przygotowanie katalogów
+      - script: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install chromium
+          mkdir -p "$(reportDir)"
+        displayName: "Install dependencies & prepare dirs"
+
+      # Uruchomienie testów
+      - script: |
+          pytest \
+            --junitxml="$(junitFile)" \
+            --tracing retain-on-failure \
+            --video retain-on-failure \
+            --screenshot only-on-failure \
+            --output="$(reportDir)"
+        displayName: "Run Playwright tests"
+
+      # Publikacja artefaktów
+      - task: PublishPipelineArtifact@1
+        inputs:
+          targetPath: "$(artifactDir)/test-report"
+          artifactName: "test-report-$(parameters.testEnvironment)"
+          publishLocation: "pipeline"
+        condition: succeededOrFailed()
+        displayName: "Publish test report artifacts"
+
+      # Publikacja wyników testów (JUnit)
+      - task: PublishTestResults@2
+        inputs:
+          testResultsFormat: "JUnit"
+          testResultsFiles: "$(junitFile)"
+          testRunTitle: "Playwright tests [${{ parameters.testEnvironment }}]"
+          mergeTestResults: true
+        condition: succeededOrFailed()
+        displayName: "Publish test results"
