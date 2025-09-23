@@ -1,204 +1,158 @@
-Jak to naprawić ✅
+🌍 Globusy / „coś globalnego”
 
-Wystarczy, że ujednolicisz ścieżki. Najprościej popraw task publikacji, żeby wskazywał dokładnie tam, gdzie zapisujesz raporty:
+🌍 🌎 🌏 — globus (Europa/Afryka, Ameryki, Azja/Oceania)
 
-- task: PublishPipelineArtifact@1
-  inputs:
-    targetPath: '$(Build.ArtifactStagingDirectory)/test-report'
-    artifactName: 'test-report-UAT'
-    publishLocation: 'pipeline'
-  condition: succeededOrFailed()
-  displayName: 'Publish Artifacts'
+🌐 — „globe with meridians” (sieć/Internet)
 
-Dodatkowo (dla testów JUnit w ADO)
+🗺️ — mapa
 
-Masz już PublishTestResults@2 na końcu, który wskazuje poprawnie na:
+🧭 — kompas (nawigacja/kierunek)
 
-testResultsFiles: '$(Build.ArtifactStagingDirectory)/test-results-UAT.xml'
+✈️ — lot (release flight / rollout)
 
+🖥️ Monitory / komputery
 
-To jest OK – ten krok zajmuje się integracją wyników testów z Azure DevOps (pokazuje wyniki w zakładce Tests).
-A PublishPipelineArtifact służy tylko do tego, żeby wrzucić cały folder z raportami (np. Playwright z filmikami i screenshotami).
+🖥️ — desktop (monitor)
 
-TL;DR
+💻 — laptop
 
-Zamień w PublishPipelineArtifact:
+⌨️ — klawiatura
 
-targetPath: 'test-report'
+🖱️ — mysz
 
+🖨️ — drukarka
 
-na:
+☁️ Chmura / infrastruktura
 
-targetPath: '$(Build.ArtifactStagingDirectory)/test-report'
+☁️ — chmura (ogólnie)
 
+🛰️ — satelita (CDN/telemetria)
 
+📡 — antena (sieć, telemetry/metrics)
 
-- name: testsHeader
-  type: string
-  default: "──────── 🧪 TESTS ────────"
-  displayName: " "
+🔌 — wtyczka (integracje, połączenia)
 
+🧱 — firewall / granica (umownie)
 
-https://www.emotikonyznaczenie.pl/
+🛠️ Build / CI / narzędzia
 
-✅ ☑️ ✔️ (testy zaliczone)
+🔧 — wrench (build/fix)
 
-🧪 (testy)
+🛠️ — hammer & wrench (maintenance)
 
-🤖 (automaty/autotesty)
+⚙️ — gear (konfiguracja)
 
-🚀 (deploy)
+🧰 — toolbox (narzędzia)
 
-🔧 (build)
+🔩 — śruba (artefakty, zależności)
 
-🔥 (coś krytycznego)
+🪛 — śrubokręt (prace techniczne)
 
-🐛 (debug / bugfix)
+📦 Artefakty / publikacja
 
+📦 — paczka/artefakt
 
+📥 / 📤 — in/out (download/upload)
 
-jobs:
-- job: run_tests
-  pool: 'BSK-only-tests-runner-pool'
-  steps:
-    - ${{ if eq(variables['Build.Repository.Name'], 'P09811-doc2') }}:
-        - checkout: autotest
+🔗 — link (dependency, relacja)
 
+🏷️ — tag/release tag
 
-resources:
-  pipelines:
-    - pipeline: autotest
-      source: P09811-Testing-Automation    # tu NAZWA pipeline z DevOps
-      project: P09811
-      trigger: none   # żeby nie triggerował się sam
+🧪 Testy / jakość
 
+🧪 — testy (unit/integration)
 
-stages:
-- stage: QA_Tests
-  displayName: "QA UAT"
-  jobs:
-  - job: Run_Tests
-    steps:
-    - script: echo "Running autotest pipeline..."
+🔬 — analiza (coverage, quality gate)
 
+🧫 — eksperyment (A/B, canary)
 
-resources:
-  repositories:
-    - repository: autotest
-      type: git
-      name: P09811-testing-automation
-      ref: refs/heads/develop
+📋 — checklist
 
-stages:
-- stage: QA_Tests
-  displayName: "QA UAT"
-  jobs:
-  - template: pipeline/jobs/run_tests.yml@autotest
-    parameters:
-      unittest: ${{ parameters.unittest }}
-      testprojs: ${{ parameters.testprojs }}
+🔍 / 🔎 — lupa (inspekcja)
 
+📝 — notatka/raport
 
+📊 Monitoring / obserwowalność
 
+📈 / 📉 / 📊 — wykresy (trend, KPI, SLO)
 
+🔔 — alert
 
-resources:
-  pipelines:
-    - pipeline: autotest
-      source: P09811-testing-automation
-      project: P09811
-      branch: develop
+⏱️ — stopwatch (czas odpowiedzi)
 
-stages:
-- stage: qa_tests_uat
-  displayName: "QA UAT"
-  dependsOn: []
-  jobs:
-  - job: RunTests
-    steps:
-    - script: echo "Trigger autotest pipeline"
+⏳ / ⌛ — (oczekiwanie/timeout)
 
+🛰️ / 📡 — telemetry/metrics (jak wyżej)
 
+🔐 Bezpieczeństwo
 
+🔒 / 🔓 — lock/unlock
 
-private List<ZswBalanceDocument> ReadBalanceDocument(byte[] excelContent, string documentId)
-{
-    var documents = new List<ZswBalanceDocument>();
+🛡️ — tarcza (shield)
 
-    using var stream = new MemoryStream(excelContent);
-    using var document = SpreadsheetDocument.Open(stream, isEditable: false);
+🔑 / 🗝️ — klucz (sekrety, dostęp)
 
-    var workbookPart = document.WorkbookPart;
-    var sheet = workbookPart.Workbook.Sheets.Elements<Sheet>().First();
-    var worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
+🕵️ — detektyw (skan/analiza)
 
-    var sharedStringTable = workbookPart.SharedStringTablePart.SharedStringTable;
+🚫 / ⛔ — blokada/reguła
 
-    string GetCellValue(string cellReference, Row row)
-    {
-        var cell = row.Elements<Cell>()
-            .FirstOrDefault(c => c.CellReference?.Value.StartsWith(cellReference) == true);
+🚀 Deploy / wydania
 
-        if (cell == null || cell.CellValue == null)
-            return string.Empty;
+🚀 — deploy/release
 
-        var value = cell.CellValue.InnerText;
+🔄 / 🔁 — redeploy/rollout
 
-        if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
-        {
-            var index = int.Parse(value);
-            return sharedStringTable.ElementAt(index).InnerText;
-        }
+🔃 — retry/refresh
 
-        return value;
-    }
+🏁 — zakończenie/Go-Live
 
-    string GetCellValue(string cellReference)
-    {
-        var cell = worksheetPart.Worksheet.Descendants<Cell>()
-            .FirstOrDefault(c => c.CellReference?.Value == cellReference);
+🧭 — kierowanie ruchem (routing)
 
-        if (cell == null || cell.CellValue == null)
-            return string.Empty;
+🟢 Status / zdrowie
 
-        var value = cell.CellValue.InnerText;
+🟢 🟡 🟠 🔴 — status (OK / warn / at risk / fail)
 
-        if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
-        {
-            var index = int.Parse(value);
-            return sharedStringTable.ElementAt(index).InnerText;
-        }
+✅ ☑️ ✔️ — zaliczone
 
-        return value;
-    }
+❌ ✖️ — fail/odrzucone
 
-    // 👇 najpierw odczytujemy saldo z nagłówka (np. B1)
-    var balanceAtDate = ParseDate(GetCellValue("B1"));
+⚠️ — ostrzeżenie
 
-    foreach (var row in worksheetPart.Worksheet.Descendants<Row>())
-    {
-        // pomijamy nagłówki
-        if (row.RowIndex.Value < 3)
-            continue;
+ℹ️ — info
 
-        var balanceDoc = new ZswBalanceDocument
-        {
-            DocumentId = documentId,
-            ShortAccountNumber = GetCellValue("A", row),
-            BalanceAtDate = balanceAtDate, // 👈 przepisywane do każdego obiektu
-            TotalCapital = Math.Round(ParseDecimal(GetCellValue("C", row)), 2),
-            DueCapital = Math.Round(ParseDecimal(GetCellValue("D", row)), 2),
-            ContractualInterest = Math.Round(ParseDecimal(GetCellValue("E", row)), 2),
-            DueInterest = Math.Round(ParseDecimal(GetCellValue("F", row)), 2),
-            DefaultInterest = Math.Round(ParseDecimal(GetCellValue("G", row)), 2),
-            FeesOrCommissions = Math.Round(ParseDecimal(GetCellValue("H", row)), 2),
-            TotalRepaymentAmount = Math.Round(ParseDecimal(GetCellValue("I", row)), 2),
-            Currency = GetCellValue("J", row),
-            DueDate = ParseDate(GetCellValue("K", row))
-        };
+🐛 Incydenty / awarie
 
-        documents.Add(balanceDoc);
-    }
+🐛 — bug
 
-    return documents;
-}
+🔥 — incydent/krytyk
+
+🚨 — alarm/incydent
+
+🧯 — gaszenie pożaru (hotfix)
+
+💥 — crash
+
+🗄️ Dane / repo / konfiguracja
+
+💾 — storage (dysk)
+
+🗄️ — szafka/archiwum (backup)
+
+🗂️ / 🗃️ — katalogi/konfiguracje
+
+📚 — dokumentacja
+
+🧩 — moduł/feature
+
+Szybka paczka „kopiuj-wklej”
+
+Globus/monitor: 🌐 🌍 🌎 🌏 🖥️ 💻
+Build: 🔧 🛠️ ⚙️ 🧰
+Testy: 🧪 🔬 📋 🔍
+Deploy: 🚀 🔄 🔁 🏁
+Monitoring: 📈 📉 📊 🔔
+Status: 🟢 🟡 🟠 🔴 ✅ ❌ ⚠️ ℹ️
+Security: 🔒 🛡️ 🔑 🕵️ 🚫
+Incydent: 🐛 🔥 🚨 🧯
+Artefakty: 📦 📥 📤 🔗 🏷️
+Sieć/telemetria: 📡 🛰️ 🔌
