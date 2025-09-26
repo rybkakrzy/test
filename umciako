@@ -1,358 +1,166 @@
-file-upload.model.ts
-export interface FileUploadConfig {
-  allowedTypes: string[];
-  maxSizeInMB: number;
-  uploadUrl: string;
-  multiFile?: boolean;   // default: false
-  autoUpload?: boolean;  // default: true
+# =========================
+# Global process settings
+# =========================
+user  nginx;                  # <<< On Debian/Ubuntu use: www-data
+worker_processes auto;
+pid /run/nginx.pid;
+worker_rlimit_nofile 200000;
+
+events {
+    worker_connections  65535;
+    multi_accept on;
+    # debug_connection 1.2.3.4;   # (optional) limit 'debug' logs to your IP during investigation
 }
 
-export interface FileUploadItem {
-  file: File;
-  progress: number | null;
-  error?: string;
-  uploaded?: boolean;
-  response?: FileUploadResponse;
-}
+# =========================
+# HTTP (web) settings
+# =========================
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    charset       utf-8;
 
-export interface FileUploadResponse {
-  success: boolean;
-  message?: string;
-  fileUrl?: string;
-}
+    # -------- Access logs (rich JSON) --------
+    log_subrequest on;  # log internal redirects/subrequests (useful for SPA)
+    log_format main_json escape=json
+      '{'
+        '"time":"$time_iso8601",'
+        '"remote":"$remote_addr",'
+        '"host":"$host",'
+        '"method":"$request_method",'
+        '"uri":"$request_uri",'
+        '"status":$status,'
+        '"req_len":$request_length,'
+        '"sent":$body_bytes_sent,'
+        '"req_time":$request_time,'
+        '"up_addr":"$upstream_addr",'
+        '"up_status":"$upstream_status",'
+        '"up_connect_time":"$upstream_connect_time",'
+        '"up_header_time":"$upstream_header_time",'
+        '"up_resp_time":"$upstream_response_time",'
+        '"ref":"$http_referer",'
+        '"ua":"$http_user_agent",'
+        '"cache":"$upstream_cache_status",'
+        '"conn":"$connection",'
+        '"conn_reqs":"$connection_requests",'
+        '"pipe":"$pipe"'
+      '}';
+    access_log /var/log/nginx/access.json main_json buffer=256k flush=1s gzip;
 
-file-upload.service.ts
-import { Injectable } from '@angular/core';
-import { HttpClient, HttpEvent, HttpEventType, HttpErrorResponse } from '@angular/common/http';
-import { Observable, throwError } from 'rxjs';
-import { catchError, map } from 'rxjs/operators';
-import { FileUploadResponse } from './file-upload.model';
+    # Error log level:
+    # - info: recommended default
+    # - debug: only temporarily (VERY verbose)
+    error_log  /var/log/nginx/error.log info;
 
-@Injectable({ providedIn: 'root' })
-export class FileUploadService {
-  constructor(private http: HttpClient) {}
+    # -------- Performance/networking --------
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65s;
+    keepalive_requests 1000;
+    server_tokens off;
+    reset_timedout_connection on;
+    open_log_file_cache max=1000 inactive=30s valid=1m min_uses=2;
 
-  uploadFile(file: File, uploadUrl: string): Observable<number | FileUploadResponse> {
-    const formData = new FormData();
-    formData.append('file', file);
+    # -------- Upload-friendly limits/timeouts --------
+    client_max_body_size  512m;    # align with backend limits
+    client_body_timeout   600s;
+    send_timeout          600s;
+    large_client_header_buffers 8 64k;
 
-    return this.http.post<FileUploadResponse>(uploadUrl, formData, {
-      reportProgress: true,
-      observe: 'events'
-    }).pipe(
-      map((event: HttpEvent<any>) => {
-        if (event.type === HttpEventType.UploadProgress && event.total) {
-          return Math.round((100 * event.loaded) / event.total);
+    # Move temporary files to a large/fast volume (create and chown to nginx)
+    client_body_temp_path  /data/nginx/body  1 2;
+    proxy_temp_path        /data/nginx/proxy 1 2;
+
+    # -------- Gzip for text assets --------
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_types
+      text/plain text/css application/json application/javascript
+      application/xml application/rss+xml application/vnd.ms-fontobject
+      application/x-font-ttf font/opentype image/svg+xml;
+
+    # -------- Upstream to .NET/Kestrel --------
+    upstream dotnet_backend {
+        server 127.0.0.1:51111 max_fails=3 fail_timeout=10s;   # <<< CHANGE ME (host:port)
+        keepalive 64;  # keep persistent connections to backend
+    }
+
+    # WebSocket upgrade mapping (harmless if unused)
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    # =========================
+    # Server (Angular + API)
+    # =========================
+    server {
+        listen      80;             # <<< CHANGE to 443 with TLS if needed
+        server_name _;
+
+        # --- Security headers (safe defaults) ---
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options SAMEORIGIN always;
+        add_header X-XSS-Protection "1; mode=block" always;
+
+        # --- SPA (Angular) static files ---
+        root  /var/www/angular-dist;     # <<< CHANGE ME (Angular dist path)
+        index index.html;
+
+        # Cache immutable assets aggressively
+        location ~* \.(?:js|mjs|css|png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf)$ {
+            access_log off;
+            expires 30d;
+            add_header Cache-Control "public, max-age=2592000, immutable";
+            try_files $uri =404;
         }
-        if (event.type === HttpEventType.Response) {
-          return event.body as FileUploadResponse;
+
+        # SPA fallback for client-side routes
+        location / {
+            try_files $uri $uri/ /index.html;
         }
-        return 0;
-      }),
-      catchError((error: HttpErrorResponse) => {
-        return throwError(() => new Error(error.message || 'File upload failed'));
-      })
-    );
-  }
-}
 
-file-upload.component.ts
-import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { FileUploadConfig, FileUploadItem, FileUploadResponse } from './file-upload.model';
-import { FileUploadService } from './file-upload.service';
+        # --- API → .NET 8 (reverse proxy) ---
+        location /api/ {
+            proxy_http_version 1.1;
 
-@Component({
-  selector: 'app-file-upload',
-  templateUrl: './file-upload.component.html',
-  styleUrls: ['./file-upload.component.scss']
-})
-export class FileUploadComponent {
-  @Input() config!: FileUploadConfig;
-  @Output() fileUploaded = new EventEmitter<FileUploadResponse>();
-  @Output() allFilesUploaded = new EventEmitter<FileUploadResponse[]>();
+            # Remove 'Expect: 100-continue' that sometimes breaks uploads
+            proxy_set_header Expect "";
 
-  files: FileUploadItem[] = [];
+            proxy_set_header Host               $host;
+            proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto  $scheme;
 
-  constructor(private uploadService: FileUploadService) {}
+            # Let Nginx buffer request bodies to temp dir first (safer for .NET)
+            proxy_request_buffering on;
 
-  onFileDropped(files: FileList | null): void {
-    if (!files) return;
-    this.addFiles(files);
-  }
+            # Generous timeouts for large/slow uploads
+            proxy_connect_timeout 30s;
+            proxy_send_timeout    600s;
+            proxy_read_timeout    600s;
 
-  onFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (!input.files) return;
-    this.addFiles(input.files);
-    input.value = '';
-  }
+            # Optional per-location log file (still JSON)
+            access_log /var/log/nginx/api_access.json main_json buffer=256k flush=1s gzip;
 
-  private addFiles(fileList: FileList): void {
-    const validFiles: FileUploadItem[] = [];
-
-    Array.from(fileList).forEach(file => {
-      const error = this.validateFile(file);
-      validFiles.push({ file, progress: null, error });
-    });
-
-    if (!this.config.multiFile) {
-      this.files = [validFiles[0]];
-    } else {
-      this.files.push(...validFiles);
-    }
-
-    if (this.config.autoUpload !== false) {
-      this.uploadAll();
-    }
-  }
-
-  private validateFile(file: File): string | undefined {
-    if (this.config.allowedTypes.length && !this.config.allowedTypes.includes(file.type)) {
-      return `Invalid type: ${file.type}`;
-    }
-    const maxSizeBytes = this.config.maxSizeInMB * 1024 * 1024;
-    if (file.size > maxSizeBytes) {
-      return `File too large (max ${this.config.maxSizeInMB} MB)`;
-    }
-    return undefined;
-  }
-
-  uploadFile(item: FileUploadItem): void {
-    if (item.error || item.uploaded) return;
-
-    this.uploadService.uploadFile(item.file, this.config.uploadUrl).subscribe({
-      next: (event) => {
-        if (typeof event === 'number') {
-          item.progress = event;
-        } else {
-          item.response = event;
-          item.uploaded = true;
-          this.fileUploaded.emit(event);
+            proxy_pass http://dotnet_backend;
         }
-      },
-      error: (err) => {
-        item.error = err.message;
-      }
-    });
-  }
 
-  uploadAll(): void {
-    const responses: FileUploadResponse[] = [];
-    this.files.forEach(item => {
-      if (!item.error && !item.uploaded) {
-        this.uploadService.uploadFile(item.file, this.config.uploadUrl).subscribe({
-          next: (event) => {
-            if (typeof event === 'number') {
-              item.progress = event;
-            } else {
-              item.response = event;
-              item.uploaded = true;
-              responses.push(event);
-              this.fileUploaded.emit(event);
+        # Optional runtime stats (limit access!)
+        location /nginx_status {
+            stub_status on;
+            allow 127.0.0.1;
+            # allow 10.0.0.0/8;   # <<< your CIDR if needed
+            deny all;
+        }
 
-              if (responses.length === this.files.filter(f => !f.error).length) {
-                this.allFilesUploaded.emit(responses);
-              }
-            }
-          },
-          error: (err) => {
-            item.error = err.message;
-          }
-        });
-      }
-    });
-  }
-
-  removeFile(index: number): void {
-    this.files.splice(index, 1);
-  }
-}
-
-file-upload.component.html
-<div
-  class="upload-container"
-  [class.dragging]="false"
-  (dragover)="$event.preventDefault()"
-  (drop)="onFileDropped($event.dataTransfer?.files); $event.preventDefault()"
->
-  <p>Drag & drop file(s) here or click below</p>
-  
-  <button type="button" (click)="fileInput.click()">Choose File(s)</button>
-  <input 
-    #fileInput 
-    type="file" 
-    [attr.multiple]="config.multiFile ? '' : null"
-    hidden 
-    (change)="onFileSelected($event)" 
-  />
-</div>
-
-<div class="file-list" *ngIf="files.length > 0">
-  <div class="file-item" *ngFor="let item of files; let i = index">
-    <span>{{ item.file.name }} ({{ (item.file.size / 1024 / 1024) | number:'1.2-2' }} MB)</span>
-
-    <span *ngIf="item.error" class="error"> - {{ item.error }}</span>
-
-    <ng-container *ngIf="!item.error">
-      <span *ngIf="item.progress !== null && !item.uploaded">
-        Uploading... {{ item.progress }}%
-      </span>
-      <span *ngIf="item.uploaded && item.response?.success">✔ Uploaded</span>
-      <span *ngIf="item.uploaded && !item.response?.success">✖ Failed</span>
-    </ng-container>
-
-    <button type="button" (click)="removeFile(i)">Remove</button>
-    <button *ngIf="!config.autoUpload && !item.uploaded && !item.error" type="button" (click)="uploadFile(item)">
-      Upload
-    </button>
-  </div>
-
-  <div *ngIf="!config.autoUpload">
-    <button type="button" (click)="uploadAll()">Upload All</button>
-  </div>
-</div>
-
-file-upload.component.scss
-.upload-container {
-  border: 2px dashed #bbb;
-  border-radius: 8px;
-  text-align: center;
-  padding: 2rem;
-  margin-bottom: 1rem;
-
-  button {
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    border: none;
-    background-color: #007bff;
-    color: #fff;
-    cursor: pointer;
-  }
-}
-
-.file-list {
-  .file-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.3rem 0;
-    border-bottom: 1px solid #eee;
-
-    .error {
-      color: #d9534f;
-      margin-left: 0.5rem;
+        # Simple error page (everything is logged in error.log anyway)
+        error_page 500 502 503 504 /50x.html;
+        location = /50x.html { internal; return 500 "Internal error\n"; }
     }
 
-    button {
-      margin-left: 0.5rem;
-      padding: 0.3rem 0.6rem;
-    }
-  }
+    # --- Optionally include other vhosts here ---
+    # include /etc/nginx/conf.d/*.conf;
 }
-
-🔧 Użycie w aplikacji
-<!-- Upload jednego pliku, wysyłka od razu -->
-<app-file-upload
-  [config]="{
-    allowedTypes: ['image/png', 'image/jpeg'],
-    maxSizeInMB: 5,
-    uploadUrl: '/api/files/upload',
-    multiFile: false,
-    autoUpload: true
-  }"
-  (fileUploaded)="onFileUploaded($event)"
-></app-file-upload>
-
-<!-- Upload wielu plików, lista + ręczne wysyłanie -->
-<app-file-upload
-  [config]="{
-    allowedTypes: ['application/pdf'],
-    maxSizeInMB: 20,
-    uploadUrl: '/api/files/upload',
-    multiFile: true,
-    autoUpload: false
-  }"
-  (allFilesUploaded)="onAllUploaded($event)"
-></app-file-upload>
-
-
-
-
-
-
-parameters:
-  - name: testEnvironment
-    type: string
-    values:
-      - dev
-      - uat
-      - pre
-
-jobs:
-  - job: run_tests
-    displayName: "Run Playwright tests"
-    pool:
-      name: BSK-only-tests-runner-pool
-
-    variables:
-      artifactDir: "$(Build.ArtifactStagingDirectory)"
-      reportDir: "$(artifactDir)/test-report/playwright"
-      junitFile: "$(artifactDir)/test-results-$(parameters.testEnvironment).xml"
-
-    steps:
-      # Pobranie repo
-      - checkout: self
-        displayName: "Checkout repository"
-
-      # Sekret z KeyVault (DEV/ UAT / PRE)
-      - task: AzureKeyVault@2
-        inputs:
-          azureSubscription: "P09811-KeyVault-SVC-NONPROD"
-          KeyVaultName: "P09811-doc2-$(parameters.testEnvironment | toUpper)-KV"
-          SecretsFilter: "*"
-          RunAsPreJob: false
-        displayName: "Download secrets [${{ parameters.testEnvironment | toUpper }}]"
-
-      # Autoryzacja do prywatnego feeda PIP
-      - task: PipAuthenticate@1
-        inputs:
-          artifactFeeds: "IngOne/P09811-incoming-pypi"
-        displayName: "Authenticate Pip"
-
-      # Instalacja zależności + przygotowanie katalogów
-      - script: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          python -m playwright install chromium
-          mkdir -p "$(reportDir)"
-        displayName: "Install dependencies & prepare dirs"
-
-      # Uruchomienie testów
-      - script: |
-          pytest \
-            --junitxml="$(junitFile)" \
-            --tracing retain-on-failure \
-            --video retain-on-failure \
-            --screenshot only-on-failure \
-            --output="$(reportDir)"
-        displayName: "Run Playwright tests"
-
-      # Publikacja artefaktów
-      - task: PublishPipelineArtifact@1
-        inputs:
-          targetPath: "$(artifactDir)/test-report"
-          artifactName: "test-report-$(parameters.testEnvironment)"
-          publishLocation: "pipeline"
-        condition: succeededOrFailed()
-        displayName: "Publish test report artifacts"
-
-      # Publikacja wyników testów (JUnit)
-      - task: PublishTestResults@2
-        inputs:
-          testResultsFormat: "JUnit"
-          testResultsFiles: "$(junitFile)"
-          testRunTitle: "Playwright tests [${{ parameters.testEnvironment }}]"
-          mergeTestResults: true
-        condition: succeededOrFailed()
-        displayName: "Publish test results"
