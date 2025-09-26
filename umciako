@@ -1,16 +1,19 @@
-<!-- Simple, accessible file upload UI -->
+Jasne — dorzuciłem pełną obsługę stanu “od kliknięcia w przycisk do pojawienia się nazw plików” + profesjonalne logi (czas powrotu z okna wyboru, czas parsowania FileList, liczba i łączny rozmiar plików).
+Logi są widoczne w konsoli i w prostym panelu w UI. Dodałem też detekcję anulowania okna wyboru (gdy użytkownik zamknie dialog bez wyboru).
+
+upload.component.html
 <div class="upload">
-  <!-- Hidden native input; we trigger it from the button -->
+  <!-- Hidden native input -->
   <input
     #fileInput
     type="file"
     (change)="onFilesSelected($event)"
-    [attr.accept]="accept"       <!-- e.g. 'image/*' or '.pdf,.docx' -->
+    [attr.accept]="accept"
     [multiple]="allowMultiple"
-    style="display: none" />
+    style="display:none" />
 
   <div class="controls">
-    <button type="button" (click)="fileInput.click()" [disabled]="isUploading">
+    <button type="button" (click)="openFileDialog(fileInput)" [disabled]="isUploading">
       Wybierz plik(i)
     </button>
 
@@ -19,11 +22,20 @@
     </button>
   </div>
 
-  <!-- Selected files preview -->
+  <!-- UI state -->
+  <p>Stan: <strong>{{ uiState }}</strong></p>
+  <ng-container *ngIf="decisionDurationMs >= 0">
+    <p>Powrót z okna wyboru: <strong>{{ decisionDurationMs }} ms</strong></p>
+  </ng-container>
+  <ng-container *ngIf="parseDurationMs >= 0">
+    <p>Parsowanie wyboru: <strong>{{ parseDurationMs }} ms</strong></p>
+  </ng-container>
+
+  <!-- Selected files -->
   <div *ngIf="files.length">
-    <p>Wybrane pliki:</p>
+    <p>Wybrane pliki ({{ files.length }}), łączny rozmiar: {{ totalSize | number }} B</p>
     <ul>
-      <li *ngFor="let f of files">
+      <li *ngFor="let f of files; trackBy: trackByName">
         {{ f.name }} — {{ f.size | number }} B
       </li>
     </ul>
@@ -35,15 +47,32 @@
     <span>{{ progress }}%</span>
   </div>
 
-  <!-- Error info (optional) -->
   <p *ngIf="error" class="error">{{ error }}</p>
+
+  <!-- In-UI log panel (last entries on top) -->
+  <div class="logs" *ngIf="uiLogs.length">
+    <h4>Logi UI</h4>
+    <ul>
+      <li *ngFor="let l of uiLogs.slice().reverse()">
+        <code>[{{ l.time }}] {{ l.level }}:</code> {{ l.message }}
+      </li>
+    </ul>
+  </div>
 </div>
+
 upload.component.ts
-ts
-Skopiuj kod
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpEventType } from '@angular/common/http';
+import { LoggerService, LogLevel } from './logger.service';
+
+type UiState = 'idle' | 'choosing' | 'parsing' | 'ready' | 'uploading' | 'canceled' | 'error';
+
+interface UiLog {
+  time: string;
+  level: LogLevel;
+  message: string;
+}
 
 @Component({
   selector: 'app-upload',
@@ -52,453 +81,326 @@ import { HttpClient, HttpEventType } from '@angular/common/http';
   templateUrl: './upload.component.html',
 })
 export class UploadComponent {
-  // Configuration (can be bound from parent if needed)
-  accept = '*/*';            // e.g. 'image/*' or '.pdf,.docx'
-  allowMultiple = true;      // allow selecting multiple files
-  endpoint = '/api/upload';  // backend endpoint
+  // Config
+  accept = '*/*';
+  allowMultiple = true;
+  endpoint = '/api/upload';
 
   // UI state
+  uiState: UiState = 'idle';
   files: File[] = [];
+  totalSize = 0;
+
   isUploading = false;
-  progress = -1;             // -1 means "no progress yet"
+  progress = -1;
   error = '';
 
-  constructor(private http: HttpClient) {}
+  // Timings (ms)
+  private selectionStartedAt = -1;
+  decisionDurationMs = -1;
+  parseDurationMs = -1;
+
+  // UI logs (also mirrored to console)
+  uiLogs: UiLog[] = [];
+
+  // Guard to detect dialog cancel (we remove it on focus back)
+  private cancelFocusHandler?: (ev: FocusEvent) => void;
+
+  constructor(private http: HttpClient, private logger: LoggerService) {}
+
+  openFileDialog(input: HTMLInputElement): void {
+    // Mark the beginning of the selection phase
+    this.setUiState('choosing');
+    this.selectionStartedAt = performance.now();
+    this.decisionDurationMs = -1;
+    this.parseDurationMs = -1;
+    this.files = [];
+    this.totalSize = 0;
+    this.error = '';
+    this.progress = -1;
+
+    // Install a one-shot focus handler: when the native dialog closes,
+    // the window regains focus. If no files are selected, we treat it as "canceled".
+    this.cancelFocusHandler = () => {
+      // Timeout 0 ensures input.files is already updated by the browser
+      setTimeout(() => {
+        if (!input.files || input.files.length === 0) {
+          const duration = Math.round(performance.now() - this.selectionStartedAt);
+          this.decisionDurationMs = duration;
+          this.addLog('INFO', `Dialog closed without selection (decision=${duration} ms).`);
+          this.setUiState('canceled');
+        }
+        window.removeEventListener('focus', this.cancelFocusHandler!, true);
+        this.cancelFocusHandler = undefined;
+      }, 0);
+    };
+    window.addEventListener('focus', this.cancelFocusHandler, true);
+
+    // Open the native file dialog
+    input.click();
+    this.addLog('DEBUG', 'Native file dialog opened.');
+  }
 
   onFilesSelected(event: Event): void {
-    // Safely read FileList from the input event
+    // Guard: user might cancel; in that case this handler won't fire
+    this.setUiState('parsing');
+
+    const decisionStop = performance.now();
+    this.decisionDurationMs = this.selectionStartedAt >= 0
+      ? Math.round(decisionStop - this.selectionStartedAt)
+      : -1;
+
+    const parseStart = performance.now();
+
+    // Safely read FileList
     const input = event.target as HTMLInputElement;
     const list = input.files;
-    this.files = [];
+    const selected: File[] = [];
 
     if (list && list.length > 0) {
-      // Convert FileList to a regular array
       for (let i = 0; i < list.length; i++) {
-        const file = list.item(i);
-        if (file) this.files.push(file);
+        const f = list.item(i);
+        if (f) selected.push(f);
       }
-      this.error = '';
-      this.progress = -1;
     }
+
+    this.files = selected;
+    this.totalSize = selected.reduce((acc, f) => acc + f.size, 0);
+
+    const parseStop = Math.round(performance.now() - parseStart);
+    this.parseDurationMs = parseStop;
+
+    // Log useful, structured info
+    this.addLog('INFO', `Files selected: ${selected.length}, totalSize=${this.totalSize} B `
+      + `(decision=${this.decisionDurationMs} ms, parse=${this.parseDurationMs} ms).`);
+
+    this.setUiState('ready');
   }
 
   upload(): void {
     if (!this.files.length || this.isUploading) return;
 
     const form = new FormData();
-    // Append files; the key name 'files' must match what your backend expects
     for (const f of this.files) {
-      // Provide filename explicitly for proper Content-Disposition
       form.append('files', f, f.name);
     }
 
-    // Important: do NOT set Content-Type for FormData; the browser will add boundary
     this.isUploading = true;
     this.progress = 0;
-    this.error = '';
+    this.setUiState('uploading');
+    this.addLog('INFO', `Starting upload of ${this.files.length} file(s), totalSize=${this.totalSize} B.`);
 
     this.http.post(this.endpoint, form, {
       reportProgress: true,
       observe: 'events',
     }).subscribe({
       next: (evt) => {
-        // Upload progress event
         if (evt.type === HttpEventType.UploadProgress) {
           if (evt.total && evt.total > 0) {
-            this.progress = Math.round(100 * (evt.loaded / evt.total));
+            const p = Math.round(100 * (evt.loaded / evt.total));
+            this.progress = p;
           }
         }
-        // Final response from the server
         if (evt.type === HttpEventType.Response) {
           this.isUploading = false;
           this.progress = 100;
-          // Optionally clear selection after success
-          // this.files = [];
+          this.addLog('INFO', 'Upload completed successfully.');
+          this.setUiState('ready');
         }
       },
       error: (err) => {
-        // Show a simple message; keep details in console for debugging
         this.isUploading = false;
         this.progress = -1;
         this.error = 'Upload nie powiódł się.';
+        this.setUiState('error');
+        this.addLog('ERROR', `Upload failed: ${err?.message ?? 'unknown error'}.`);
         console.error('Upload error:', err);
       }
     });
   }
-}
 
+  trackByName(_: number, f: File): string {
+    return f.name;
+  }
 
+  private setUiState(s: UiState): void {
+    this.uiState = s;
+    this.logger.debug('UI state changed', { state: s });
+  }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-Krótka odpowiedź: tak, „pending” może wynikać z frontu (Angular). Najczęściej dzieje się to przez złą konfigurację uploadu po stronie przeglądarki/Angulara albo przez coś, co blokuje samo wysłanie żądania (preflight, interceptory, service worker, limit gniazd). Poniżej checklista rzeczy, które realnie powodują „pending 0 B” i jak je wykryć/naprawić.
-
-Co w Angularze najczęściej psuje upload
-
-Ustawiasz ręcznie Content-Type: multipart/form-data
-
-Skutek: brak boundary → serwer nie potrafi odczytać body, a czasem request „wisi”.
-
-Fix: dla FormData nie ustawiaj Content-Type. Przeglądarka zrobi to sama.
-
-const fd = new FormData();
-fd.append('file', file, file.name);
-this.http.post('/api/upload', fd, { reportProgress: true, observe: 'events' });
-
-
-HttpInterceptor dokleja nagłówki do każdego requestu
-
-Typowe: Content-Type, Accept, Authorization, transformacja ciała itp.
-
-Fix: w interceptorze rozróżniaj FormData i usuń Content-Type:
-
-@Injectable()
-export class NoContentTypeForFormDataInterceptor implements HttpInterceptor {
-  intercept(req: HttpRequest<any>, next: HttpHandler) {
-    const isFormData = req.body instanceof FormData;
-    const clean = isFormData ? req.clone({ setHeaders: { } }) : req;
-    // Upewnij się, że NIE ustawiasz Content-Type dla FormData
-    return next.handle(clean);
+  private addLog(level: LogLevel, message: string): void {
+    // Mirror to console with structured details
+    switch (level) {
+      case 'DEBUG': this.logger.debug(message); break;
+      case 'INFO':  this.logger.info(message); break;
+      case 'WARN':  this.logger.warn(message); break;
+      case 'ERROR': this.logger.error(message); break;
+    }
+    // Store lightweight log in UI
+    this.uiLogs.push({ time: new Date().toISOString(), level, message });
+    if (this.uiLogs.length > 200) this.uiLogs.shift(); // keep last 200
   }
 }
 
+logger.service.ts
+import { Injectable } from '@angular/core';
 
-CORS / preflight (OPTIONS) nie przechodzi
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
-Objawy: właściwy POST nie startuje; w Network widać tylko OPTIONS, a POST jest „pending” lub wcale.
+@Injectable({ providedIn: 'root' })
+export class LoggerService {
+  // Simple, consistent console logger with grouping and timestamps
 
-Fix: po stronie serwera/Nginx zwróć 204 dla OPTIONS i odpowiednie nagłówki lub skonfiguruj CORS w .NET.
-
-Service Worker (PWA) łapie żądania
-
-Objawy: „pending” albo dziwne cache’owanie; w DevTools → Application → Service Workers.
-
-Fix: wyłącz SW na próbę (checkbox „Bypass for network”) albo wyklucz /api/** w ngsw-config.json.
-
-Limit gniazd w przeglądarce (HTTP/1.1)
-
-Przeglądarki mają ~6 równoległych połączeń na origin. Jeśli masz SSE/SignalR/dużo XHR, nowy upload czeka → „(Stalled) / (Pending)”.
-
-Fix: włącz HTTP/2 w Nginx albo ogranicz równoległość w kliencie.
-
-Czytasz/obrabiasz plik po stronie klienta przed wysyłką
-
-Np. FileReader + hash/kompresja → długo nic się nie dzieje, wygląda jak „pending”.
-
-Fix: ogranicz preprocessing, wrzuć go do Web Workera albo wysyłaj bezpośrednio.
-
-withCredentials: true wywołuje preflight i serwer go nie obsługuje
-
-Fix: włącz CORS dla poświadczeń lub nie wysyłaj cookies, jeśli nie są potrzebne.
-
-RxJS/Angular: request wcale nie startuje
-
-Np. brak subscribe(), takeUntil anuluje zbyt wcześnie, guard/interceptor zwraca EMPTY.
-
-Fix: sprawdź, czy faktycznie subskrybujesz i nie anulujesz strumienia.
-
-Minimalny „bezpieczny” upload w Angular 18
-upload(file: File) {
-  const form = new FormData();
-  form.append('file', file, file.name); // podaj nazwę pliku
-
-  return this.http.post('/api/upload', form, {
-    reportProgress: true,
-    observe: 'events',     // dostaniesz ProgressEvent
-    // NIE ustawiaj headers: {'Content-Type': ...}
-    // withCredentials: true  // tylko jeśli naprawdę potrzebujesz cookies
-  });
-}
-
-
-UI do debugowania progresu:
-
-this.upload(file).subscribe(event => {
-  if (event.type === HttpEventType.UploadProgress && event.total) {
-    const percent = Math.round(100 * event.loaded / event.total);
-    // pokaż procent
-  } else if (event.type === HttpEventType.Response) {
-    // zakończone
+  debug(message: string, data?: unknown): void {
+    // Use groupCollapsed for better readability
+    if (data !== undefined) {
+      console.groupCollapsed(`[DEBUG] ${new Date().toISOString()} - ${message}`);
+      console.debug(data);
+      console.groupEnd();
+    } else {
+      console.debug(`[DEBUG] ${new Date().toISOString()} - ${message}`);
+    }
   }
-}, err => {
-  // obsługa błędu
-});
 
-Jak rozpoznać, że to front (a nie Nginx/.NET)
-
-W DevTools → Network → Waterfall:
-
-„Queuing/Waiting for available socket” trwa długo → limit gniazd (pkt 5).
-
-Widać OPTIONS i brak odpowiedzi → CORS/preflight (pkt 3).
-
-Request ma Request Payload i od razu leci, ale brak odpowiedzi i Size 0 B → częściej backend/proxy; potwierdź curl -v -F "file=@..." http://host/api/upload -H "Expect:".
-
-Zrób test POST do „/api/_upload-test” (endpoint, który tylko spala body) – jeśli działa, front jest OK, problem dalej jest po stronie Nginx/.NET/dysku.
-
-Szybkie „twarde” reguły dla frontu
-
-Dla FormData nigdy nie ustawiaj Content-Type.
-
-Uważaj na interceptory – nie dokładamy nagłówków do FormData.
-
-Unikaj zbędnego odczytu pliku w JS; jeśli musisz – użyj Web Worker.
-
-Gdy masz dużo równoległych połączeń – rozważ HTTP/2 i/lub ogranicz concurrency.
-
-Jeśli różne originy → poprawny CORS i obsługa OPTIONS.
-
-Jeśli pokażesz krótki fragment z Twojego serwisu Angular (metoda uploadu + interceptory) i screen z Waterfalla (kolumna „Timing”), powiem dokładnie, czy tu jest pies pogrzebany, czy trzeba wrócić do Nginxa/OS.
-
-
-
-
-Widzę Twój plik konfiguracyjny Nginx 🙂
-Masz tam serwer słuchający na porcie 15222, zdefiniowany access_log (/doc2/pocz2/nginx/access.log combined) i kilka location kierujących na backendy przez proxy_pass.
-
-Żeby logi były maksymalnie szczegółowe (zarówno dla błędów, jak i ruchu HTTP), możesz dodać globalnie w sekcji http coś w tym stylu:
-
-http {
-    include       mime.types;
-    default_type  application/octet-stream;
-    client_max_body_size 200M;
-
-    # Error log z pełnym poziomem szczegółowości
-    error_log /doc2/pocz2/nginx/error.log debug;
-
-    # Własny, rozbudowany format logów
-    log_format detailed '$remote_addr - $remote_user [$time_local] '
-                        '"$request" $status $body_bytes_sent '
-                        '"$http_referer" "$http_user_agent" '
-                        'rt=$request_time '
-                        'ua="$upstream_addr" us="$upstream_status" '
-                        'ut="$upstream_response_time" '
-                        'cs=$upstream_cache_status';
-
-    # Domyślnie wszystkie serwery korzystają z tego access loga
-    access_log /doc2/pocz2/nginx/access.log detailed;
-
-    server {
-        listen       15222;
-        server_name  localhost;
-
-        root   /usr/share/nginx/html;
-        index  index.html;
-
-        # Twoje lokacje:
-        location / {
-            try_files $uri $uri/ /index.html =404;
-        }
-
-        location /FormsWebApp/ {
-            proxy_pass http://localhost:4200;
-            proxy_set_header Host $host;
-        }
-
-        location /FormsRedirector/ {
-            proxy_pass http://localhost:4300;
-            proxy_set_header Host $host;
-        }
+  info(message: string, data?: unknown): void {
+    if (data !== undefined) {
+      console.groupCollapsed(`%c[INFO]%c ${new Date().toISOString()} - ${message}`, 'color:#2b8a3e', 'color:inherit');
+      console.info(data);
+      console.groupEnd();
+    } else {
+      console.info(`%c[INFO]%c ${new Date().toISOString()} - ${message}`, 'color:#2b8a3e', 'color:inherit');
     }
+  }
+
+  warn(message: string, data?: unknown): void {
+    if (data !== undefined) {
+      console.groupCollapsed(`%c[WARN]%c ${new Date().toISOString()} - ${message}`, 'color:#f59f00', 'color:inherit');
+      console.warn(data);
+      console.groupEnd();
+    } else {
+      console.warn(`%c[WARN]%c ${new Date().toISOString()} - ${message}`, 'color:#f59f00', 'color:inherit');
+    }
+  }
+
+  error(message: string, data?: unknown): void {
+    if (data !== undefined) {
+      console.groupCollapsed(`%c[ERROR]%c ${new Date().toISOString()} - ${message}`, 'color:#c92a2a', 'color:inherit');
+      console.error(data);
+      console.groupEnd();
+    } else {
+      console.error(`%c[ERROR]%c ${new Date().toISOString()} - ${message}`, 'color:#c92a2a', 'color:inherit');
+    }
+  }
 }
 
-Co się zmienia:
+Co dostajesz dzięki temu
 
-error_log ... debug; – dostaniesz wszystkie poziomy błędów (od krytycznych po debug).
+uiState: widzisz, czy jesteś w fazie choosing (otwarte okno), parsing (czytanie FileList), ready, uploading, canceled lub error.
 
-log_format detailed – dużo bogatsze logi access niż combined (masz czas requestu, info o upstreamach, status cache).
+Pomiary czasu:
 
-access_log ... detailed; – wymuszasz użycie tego formatu.
+decisionDurationMs – ile trwał powrót z okna Windows (od kliknięcia do change/focus back).
 
-📌 Uwaga praktyczna:
+parseDurationMs – ile trwało zbudowanie listy plików w UI (ważne przy dużych paczkach).
 
-W środowisku produkcyjnym raczej nie zostawiaj debug, bo logi urosną w szalonym tempie i mogą mocno obciążyć serwer. Najlepiej wtedy trzymać error lub warn.
+Detekcja anulowania: po powrocie fokusu, jeśli input.files jest puste → stan canceled + log.
 
-Dla debugowania / dev/staging – opcja debug plus szczegółowe access logi sprawdzi się świetnie.
+Profesjonalne logi: w konsoli (z grupowaniem i poziomami) oraz w mini panelu w UI.
 
-Chcesz, żebym Ci przygotował dwa warianty tego pliku?
-👉 jeden do dev/testów (maksymalny szczegół),
-👉 drugi do produkcji (lekki, ale nadal użyteczny do diagnozy)?
+Jeśli chcesz wariant z drag & drop, ograniczeniem łącznego rozmiaru / liczby plików, albo z „upload queue” i anulowaniem poszczególnych wysyłek – dopiszę.
 
--------------------
+Powiedziałeś(-aś):
+daj możliwość set-upu   accept = '*/*';
+  allowMultiple = true;
+  endpoint = '/api/upload';
+ChatGPT powiedział:
+Myślał przez 23s
 
+Pewnie — zróbmy to jako konfigurowalne @Input() (Angular 18). Dodałem też booleanAttribute, żeby można było ustawiać allowMultiple zwykłym atrybutem (allowMultiple="false" → false).
 
+upload.component.ts (fragment z konfiguracją + drobne walidacje)
+import { Component, Input, booleanAttribute } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { HttpClient, HttpEventType } from '@angular/common/http';
+import { LoggerService, LogLevel } from './logger.service';
 
+type UiState = 'idle' | 'choosing' | 'parsing' | 'ready' | 'uploading' | 'canceled' | 'error';
 
-# =========================
-# Global process settings
-# =========================
-user  nginx;                  # <<< On Debian/Ubuntu use: www-data
-worker_processes auto;
-pid /run/nginx.pid;
-worker_rlimit_nofile 200000;
+@Component({
+  selector: 'app-upload',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './upload.component.html',
+})
+export class UploadComponent {
+  // ======== CONFIGURABLE INPUTS ========
+  /** MIME filter or extensions (e.g., 'image/*' or '.pdf,.docx'). */
+  @Input() accept: string = '*/*';
 
-events {
-    worker_connections  65535;
-    multi_accept on;
-    # debug_connection 1.2.3.4;   # (optional) limit 'debug' logs to your IP during investigation
+  /** Allow selecting multiple files. Accepts true/false and string "false". */
+  @Input({ transform: booleanAttribute }) allowMultiple: boolean = true;
+
+  /** Backend endpoint to POST FormData to. Can be relative or absolute URL. */
+  @Input() endpoint: string = '/api/upload';
+
+  // ======== STATE ========
+  uiState: UiState = 'idle';
+  files: File[] = [];
+  totalSize = 0;
+  isUploading = false;
+  progress = -1;
+  error = '';
+
+  private selectionStartedAt = -1;
+  decisionDurationMs = -1;
+  parseDurationMs = -1;
+
+  uiLogs: { time: string; level: LogLevel; message: string }[] = [];
+  private cancelFocusHandler?: (ev: FocusEvent) => void;
+
+  constructor(private http: HttpClient, private logger: LoggerService) {}
+
+  // …reszta metod (openFileDialog, onFilesSelected, upload, setUiState, addLog) bez zmian…
+
+  // Small guard so misconfiguration is visible early
+  private validateConfig(): void {
+    if (!this.endpoint || this.endpoint.trim().length === 0) {
+      this.endpoint = '/api/upload';
+      this.addLog('WARN', 'Empty endpoint provided; falling back to /api/upload.');
+    }
+  }
+
+  ngOnInit(): void {
+    this.validateConfig();
+    this.addLog('DEBUG', `Config -> accept="${this.accept}", allowMultiple=${this.allowMultiple}, endpoint="${this.endpoint}"`);
+  }
 }
 
-# =========================
-# HTTP (web) settings
-# =========================
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-    charset       utf-8;
+upload.component.html (bez zmian – używa konfiguracji)
+<input
+  #fileInput
+  type="file"
+  (change)="onFilesSelected($event)"
+  [attr.accept]="accept"
+  [multiple]="allowMultiple"
+  style="display:none" />
+<!-- …reszta jak wcześniej… -->
 
-    # -------- Access logs (rich JSON) --------
-    log_subrequest on;  # log internal redirects/subrequests (useful for SPA)
-    log_format main_json escape=json
-      '{'
-        '"time":"$time_iso8601",'
-        '"remote":"$remote_addr",'
-        '"host":"$host",'
-        '"method":"$request_method",'
-        '"uri":"$request_uri",'
-        '"status":$status,'
-        '"req_len":$request_length,'
-        '"sent":$body_bytes_sent,'
-        '"req_time":$request_time,'
-        '"up_addr":"$upstream_addr",'
-        '"up_status":"$upstream_status",'
-        '"up_connect_time":"$upstream_connect_time",'
-        '"up_header_time":"$upstream_header_time",'
-        '"up_resp_time":"$upstream_response_time",'
-        '"ref":"$http_referer",'
-        '"ua":"$http_user_agent",'
-        '"cache":"$upstream_cache_status",'
-        '"conn":"$connection",'
-        '"conn_reqs":"$connection_requests",'
-        '"pipe":"$pipe"'
-      '}';
-    access_log /var/log/nginx/access.json main_json buffer=256k flush=1s gzip;
+Przykłady użycia w szablonie rodzica
+<!-- 1) Najprościej: atrybuty (allowMultiple parsowane przez booleanAttribute) -->
+<app-upload accept=".pdf,.docx" allowMultiple="false" endpoint="/api/files/upload"></app-upload>
 
-    # Error log level:
-    # - info: recommended default
-    # - debug: only temporarily (VERY verbose)
-    error_log  /var/log/nginx/error.log info;
+<!-- 2) Z bindowaniem property (np. z configu komponentu) -->
+<app-upload
+  [accept]="myAccept"
+  [allowMultiple]="myAllowMultiple"
+  [endpoint]="myEndpoint">
+</app-upload>
 
-    # -------- Performance/networking --------
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65s;
-    keepalive_requests 1000;
-    server_tokens off;
-    reset_timedout_connection on;
-    open_log_file_cache max=1000 inactive=30s valid=1m min_uses=2;
+// parent.component.ts
+myAccept = 'image/*';
+myAllowMultiple = true;
+myEndpoint = '/api/images/upload';
 
-    # -------- Upload-friendly limits/timeouts --------
-    client_max_body_size  512m;    # align with backend limits
-    client_body_timeout   600s;
-    send_timeout          600s;
-    large_client_header_buffers 8 64k;
 
-    # Move temporary files to a large/fast volume (create and chown to nginx)
-    client_body_temp_path  /data/nginx/body  1 2;
-    proxy_temp_path        /data/nginx/proxy 1 2;
-
-    # -------- Gzip for text assets --------
-    gzip on;
-    gzip_comp_level 5;
-    gzip_min_length 1024;
-    gzip_proxied any;
-    gzip_types
-      text/plain text/css application/json application/javascript
-      application/xml application/rss+xml application/vnd.ms-fontobject
-      application/x-font-ttf font/opentype image/svg+xml;
-
-    # -------- Upstream to .NET/Kestrel --------
-    upstream dotnet_backend {
-        server 127.0.0.1:51111 max_fails=3 fail_timeout=10s;   # <<< CHANGE ME (host:port)
-        keepalive 64;  # keep persistent connections to backend
-    }
-
-    # WebSocket upgrade mapping (harmless if unused)
-    map $http_upgrade $connection_upgrade {
-        default upgrade;
-        ''      close;
-    }
-
-    # =========================
-    # Server (Angular + API)
-    # =========================
-    server {
-        listen      80;             # <<< CHANGE to 443 with TLS if needed
-        server_name _;
-
-        # --- Security headers (safe defaults) ---
-        add_header X-Content-Type-Options nosniff always;
-        add_header X-Frame-Options SAMEORIGIN always;
-        add_header X-XSS-Protection "1; mode=block" always;
-
-        # --- SPA (Angular) static files ---
-        root  /var/www/angular-dist;     # <<< CHANGE ME (Angular dist path)
-        index index.html;
-
-        # Cache immutable assets aggressively
-        location ~* \.(?:js|mjs|css|png|jpg|jpeg|gif|webp|svg|ico|woff2?|ttf)$ {
-            access_log off;
-            expires 30d;
-            add_header Cache-Control "public, max-age=2592000, immutable";
-            try_files $uri =404;
-        }
-
-        # SPA fallback for client-side routes
-        location / {
-            try_files $uri $uri/ /index.html;
-        }
-
-        # --- API → .NET 8 (reverse proxy) ---
-        location /api/ {
-            proxy_http_version 1.1;
-
-            # Remove 'Expect: 100-continue' that sometimes breaks uploads
-            proxy_set_header Expect "";
-
-            proxy_set_header Host               $host;
-            proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto  $scheme;
-
-            # Let Nginx buffer request bodies to temp dir first (safer for .NET)
-            proxy_request_buffering on;
-
-            # Generous timeouts for large/slow uploads
-            proxy_connect_timeout 30s;
-            proxy_send_timeout    600s;
-            proxy_read_timeout    600s;
-
-            # Optional per-location log file (still JSON)
-            access_log /var/log/nginx/api_access.json main_json buffer=256k flush=1s gzip;
-
-            proxy_pass http://dotnet_backend;
-        }
-
-        # Optional runtime stats (limit access!)
-        location /nginx_status {
-            stub_status on;
-            allow 127.0.0.1;
-            # allow 10.0.0.0/8;   # <<< your CIDR if needed
-            deny all;
-        }
-
-        # Simple error page (everything is logged in error.log anyway)
-        error_page 500 502 503 504 /50x.html;
-        location = /50x.html { internal; return 500 "Internal error\n"; }
-    }
-
-    # --- Optionally include other vhosts here ---
-    # include /etc/nginx/conf.d/*.conf;
-}
+To wszystko – teraz accept, allowMultiple i endpoint są w pełni konfigurowalne, z walidacją i logiem startowym, a reszta logiki (stany + logi czasu wyboru/pliku) pozostaje bez zmian.
