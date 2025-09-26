@@ -1,3 +1,286 @@
+file-upload.model.ts
+export interface FileUploadConfig {
+  allowedTypes: string[];
+  maxSizeInMB: number;
+  uploadUrl: string;
+  multiFile?: boolean;   // default: false
+  autoUpload?: boolean;  // default: true
+}
+
+export interface FileUploadItem {
+  file: File;
+  progress: number | null;
+  error?: string;
+  uploaded?: boolean;
+  response?: FileUploadResponse;
+}
+
+export interface FileUploadResponse {
+  success: boolean;
+  message?: string;
+  fileUrl?: string;
+}
+
+file-upload.service.ts
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpEvent, HttpEventType, HttpErrorResponse } from '@angular/common/http';
+import { Observable, throwError } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
+import { FileUploadResponse } from './file-upload.model';
+
+@Injectable({ providedIn: 'root' })
+export class FileUploadService {
+  constructor(private http: HttpClient) {}
+
+  uploadFile(file: File, uploadUrl: string): Observable<number | FileUploadResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<FileUploadResponse>(uploadUrl, formData, {
+      reportProgress: true,
+      observe: 'events'
+    }).pipe(
+      map((event: HttpEvent<any>) => {
+        if (event.type === HttpEventType.UploadProgress && event.total) {
+          return Math.round((100 * event.loaded) / event.total);
+        }
+        if (event.type === HttpEventType.Response) {
+          return event.body as FileUploadResponse;
+        }
+        return 0;
+      }),
+      catchError((error: HttpErrorResponse) => {
+        return throwError(() => new Error(error.message || 'File upload failed'));
+      })
+    );
+  }
+}
+
+file-upload.component.ts
+import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { FileUploadConfig, FileUploadItem, FileUploadResponse } from './file-upload.model';
+import { FileUploadService } from './file-upload.service';
+
+@Component({
+  selector: 'app-file-upload',
+  templateUrl: './file-upload.component.html',
+  styleUrls: ['./file-upload.component.scss']
+})
+export class FileUploadComponent {
+  @Input() config!: FileUploadConfig;
+  @Output() fileUploaded = new EventEmitter<FileUploadResponse>();
+  @Output() allFilesUploaded = new EventEmitter<FileUploadResponse[]>();
+
+  files: FileUploadItem[] = [];
+
+  constructor(private uploadService: FileUploadService) {}
+
+  onFileDropped(files: FileList | null): void {
+    if (!files) return;
+    this.addFiles(files);
+  }
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files) return;
+    this.addFiles(input.files);
+    input.value = '';
+  }
+
+  private addFiles(fileList: FileList): void {
+    const validFiles: FileUploadItem[] = [];
+
+    Array.from(fileList).forEach(file => {
+      const error = this.validateFile(file);
+      validFiles.push({ file, progress: null, error });
+    });
+
+    if (!this.config.multiFile) {
+      this.files = [validFiles[0]];
+    } else {
+      this.files.push(...validFiles);
+    }
+
+    if (this.config.autoUpload !== false) {
+      this.uploadAll();
+    }
+  }
+
+  private validateFile(file: File): string | undefined {
+    if (this.config.allowedTypes.length && !this.config.allowedTypes.includes(file.type)) {
+      return `Invalid type: ${file.type}`;
+    }
+    const maxSizeBytes = this.config.maxSizeInMB * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      return `File too large (max ${this.config.maxSizeInMB} MB)`;
+    }
+    return undefined;
+  }
+
+  uploadFile(item: FileUploadItem): void {
+    if (item.error || item.uploaded) return;
+
+    this.uploadService.uploadFile(item.file, this.config.uploadUrl).subscribe({
+      next: (event) => {
+        if (typeof event === 'number') {
+          item.progress = event;
+        } else {
+          item.response = event;
+          item.uploaded = true;
+          this.fileUploaded.emit(event);
+        }
+      },
+      error: (err) => {
+        item.error = err.message;
+      }
+    });
+  }
+
+  uploadAll(): void {
+    const responses: FileUploadResponse[] = [];
+    this.files.forEach(item => {
+      if (!item.error && !item.uploaded) {
+        this.uploadService.uploadFile(item.file, this.config.uploadUrl).subscribe({
+          next: (event) => {
+            if (typeof event === 'number') {
+              item.progress = event;
+            } else {
+              item.response = event;
+              item.uploaded = true;
+              responses.push(event);
+              this.fileUploaded.emit(event);
+
+              if (responses.length === this.files.filter(f => !f.error).length) {
+                this.allFilesUploaded.emit(responses);
+              }
+            }
+          },
+          error: (err) => {
+            item.error = err.message;
+          }
+        });
+      }
+    });
+  }
+
+  removeFile(index: number): void {
+    this.files.splice(index, 1);
+  }
+}
+
+file-upload.component.html
+<div
+  class="upload-container"
+  [class.dragging]="false"
+  (dragover)="$event.preventDefault()"
+  (drop)="onFileDropped($event.dataTransfer?.files); $event.preventDefault()"
+>
+  <p>Drag & drop file(s) here or click below</p>
+  
+  <button type="button" (click)="fileInput.click()">Choose File(s)</button>
+  <input 
+    #fileInput 
+    type="file" 
+    [attr.multiple]="config.multiFile ? '' : null"
+    hidden 
+    (change)="onFileSelected($event)" 
+  />
+</div>
+
+<div class="file-list" *ngIf="files.length > 0">
+  <div class="file-item" *ngFor="let item of files; let i = index">
+    <span>{{ item.file.name }} ({{ (item.file.size / 1024 / 1024) | number:'1.2-2' }} MB)</span>
+
+    <span *ngIf="item.error" class="error"> - {{ item.error }}</span>
+
+    <ng-container *ngIf="!item.error">
+      <span *ngIf="item.progress !== null && !item.uploaded">
+        Uploading... {{ item.progress }}%
+      </span>
+      <span *ngIf="item.uploaded && item.response?.success">✔ Uploaded</span>
+      <span *ngIf="item.uploaded && !item.response?.success">✖ Failed</span>
+    </ng-container>
+
+    <button type="button" (click)="removeFile(i)">Remove</button>
+    <button *ngIf="!config.autoUpload && !item.uploaded && !item.error" type="button" (click)="uploadFile(item)">
+      Upload
+    </button>
+  </div>
+
+  <div *ngIf="!config.autoUpload">
+    <button type="button" (click)="uploadAll()">Upload All</button>
+  </div>
+</div>
+
+file-upload.component.scss
+.upload-container {
+  border: 2px dashed #bbb;
+  border-radius: 8px;
+  text-align: center;
+  padding: 2rem;
+  margin-bottom: 1rem;
+
+  button {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    border: none;
+    background-color: #007bff;
+    color: #fff;
+    cursor: pointer;
+  }
+}
+
+.file-list {
+  .file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #eee;
+
+    .error {
+      color: #d9534f;
+      margin-left: 0.5rem;
+    }
+
+    button {
+      margin-left: 0.5rem;
+      padding: 0.3rem 0.6rem;
+    }
+  }
+}
+
+🔧 Użycie w aplikacji
+<!-- Upload jednego pliku, wysyłka od razu -->
+<app-file-upload
+  [config]="{
+    allowedTypes: ['image/png', 'image/jpeg'],
+    maxSizeInMB: 5,
+    uploadUrl: '/api/files/upload',
+    multiFile: false,
+    autoUpload: true
+  }"
+  (fileUploaded)="onFileUploaded($event)"
+></app-file-upload>
+
+<!-- Upload wielu plików, lista + ręczne wysyłanie -->
+<app-file-upload
+  [config]="{
+    allowedTypes: ['application/pdf'],
+    maxSizeInMB: 20,
+    uploadUrl: '/api/files/upload',
+    multiFile: true,
+    autoUpload: false
+  }"
+  (allFilesUploaded)="onAllUploaded($event)"
+></app-file-upload>
+
+
+
+
+
+
 parameters:
   - name: testEnvironment
     type: string
