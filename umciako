@@ -1,3 +1,75 @@
+Widzę Twój plik konfiguracyjny Nginx 🙂
+Masz tam serwer słuchający na porcie 15222, zdefiniowany access_log (/doc2/pocz2/nginx/access.log combined) i kilka location kierujących na backendy przez proxy_pass.
+
+Żeby logi były maksymalnie szczegółowe (zarówno dla błędów, jak i ruchu HTTP), możesz dodać globalnie w sekcji http coś w tym stylu:
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+    client_max_body_size 200M;
+
+    # Error log z pełnym poziomem szczegółowości
+    error_log /doc2/pocz2/nginx/error.log debug;
+
+    # Własny, rozbudowany format logów
+    log_format detailed '$remote_addr - $remote_user [$time_local] '
+                        '"$request" $status $body_bytes_sent '
+                        '"$http_referer" "$http_user_agent" '
+                        'rt=$request_time '
+                        'ua="$upstream_addr" us="$upstream_status" '
+                        'ut="$upstream_response_time" '
+                        'cs=$upstream_cache_status';
+
+    # Domyślnie wszystkie serwery korzystają z tego access loga
+    access_log /doc2/pocz2/nginx/access.log detailed;
+
+    server {
+        listen       15222;
+        server_name  localhost;
+
+        root   /usr/share/nginx/html;
+        index  index.html;
+
+        # Twoje lokacje:
+        location / {
+            try_files $uri $uri/ /index.html =404;
+        }
+
+        location /FormsWebApp/ {
+            proxy_pass http://localhost:4200;
+            proxy_set_header Host $host;
+        }
+
+        location /FormsRedirector/ {
+            proxy_pass http://localhost:4300;
+            proxy_set_header Host $host;
+        }
+    }
+}
+
+Co się zmienia:
+
+error_log ... debug; – dostaniesz wszystkie poziomy błędów (od krytycznych po debug).
+
+log_format detailed – dużo bogatsze logi access niż combined (masz czas requestu, info o upstreamach, status cache).
+
+access_log ... detailed; – wymuszasz użycie tego formatu.
+
+📌 Uwaga praktyczna:
+
+W środowisku produkcyjnym raczej nie zostawiaj debug, bo logi urosną w szalonym tempie i mogą mocno obciążyć serwer. Najlepiej wtedy trzymać error lub warn.
+
+Dla debugowania / dev/staging – opcja debug plus szczegółowe access logi sprawdzi się świetnie.
+
+Chcesz, żebym Ci przygotował dwa warianty tego pliku?
+👉 jeden do dev/testów (maksymalny szczegół),
+👉 drugi do produkcji (lekki, ale nadal użyteczny do diagnozy)?
+
+-------------------
+
+
+
+
 # =========================
 # Global process settings
 # =========================
