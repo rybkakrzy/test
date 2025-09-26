@@ -1,3 +1,147 @@
+<!-- Simple, accessible file upload UI -->
+<div class="upload">
+  <!-- Hidden native input; we trigger it from the button -->
+  <input
+    #fileInput
+    type="file"
+    (change)="onFilesSelected($event)"
+    [attr.accept]="accept"       <!-- e.g. 'image/*' or '.pdf,.docx' -->
+    [multiple]="allowMultiple"
+    style="display: none" />
+
+  <div class="controls">
+    <button type="button" (click)="fileInput.click()" [disabled]="isUploading">
+      Wybierz plik(i)
+    </button>
+
+    <button type="button" (click)="upload()" [disabled]="!files.length || isUploading">
+      Wyślij
+    </button>
+  </div>
+
+  <!-- Selected files preview -->
+  <div *ngIf="files.length">
+    <p>Wybrane pliki:</p>
+    <ul>
+      <li *ngFor="let f of files">
+        {{ f.name }} — {{ f.size | number }} B
+      </li>
+    </ul>
+  </div>
+
+  <!-- Progress -->
+  <div *ngIf="progress >= 0" class="progress">
+    <progress [value]="progress" max="100"></progress>
+    <span>{{ progress }}%</span>
+  </div>
+
+  <!-- Error info (optional) -->
+  <p *ngIf="error" class="error">{{ error }}</p>
+</div>
+upload.component.ts
+ts
+Skopiuj kod
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { HttpClient, HttpEventType } from '@angular/common/http';
+
+@Component({
+  selector: 'app-upload',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './upload.component.html',
+})
+export class UploadComponent {
+  // Configuration (can be bound from parent if needed)
+  accept = '*/*';            // e.g. 'image/*' or '.pdf,.docx'
+  allowMultiple = true;      // allow selecting multiple files
+  endpoint = '/api/upload';  // backend endpoint
+
+  // UI state
+  files: File[] = [];
+  isUploading = false;
+  progress = -1;             // -1 means "no progress yet"
+  error = '';
+
+  constructor(private http: HttpClient) {}
+
+  onFilesSelected(event: Event): void {
+    // Safely read FileList from the input event
+    const input = event.target as HTMLInputElement;
+    const list = input.files;
+    this.files = [];
+
+    if (list && list.length > 0) {
+      // Convert FileList to a regular array
+      for (let i = 0; i < list.length; i++) {
+        const file = list.item(i);
+        if (file) this.files.push(file);
+      }
+      this.error = '';
+      this.progress = -1;
+    }
+  }
+
+  upload(): void {
+    if (!this.files.length || this.isUploading) return;
+
+    const form = new FormData();
+    // Append files; the key name 'files' must match what your backend expects
+    for (const f of this.files) {
+      // Provide filename explicitly for proper Content-Disposition
+      form.append('files', f, f.name);
+    }
+
+    // Important: do NOT set Content-Type for FormData; the browser will add boundary
+    this.isUploading = true;
+    this.progress = 0;
+    this.error = '';
+
+    this.http.post(this.endpoint, form, {
+      reportProgress: true,
+      observe: 'events',
+    }).subscribe({
+      next: (evt) => {
+        // Upload progress event
+        if (evt.type === HttpEventType.UploadProgress) {
+          if (evt.total && evt.total > 0) {
+            this.progress = Math.round(100 * (evt.loaded / evt.total));
+          }
+        }
+        // Final response from the server
+        if (evt.type === HttpEventType.Response) {
+          this.isUploading = false;
+          this.progress = 100;
+          // Optionally clear selection after success
+          // this.files = [];
+        }
+      },
+      error: (err) => {
+        // Show a simple message; keep details in console for debugging
+        this.isUploading = false;
+        this.progress = -1;
+        this.error = 'Upload nie powiódł się.';
+        console.error('Upload error:', err);
+      }
+    });
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Krótka odpowiedź: tak, „pending” może wynikać z frontu (Angular). Najczęściej dzieje się to przez złą konfigurację uploadu po stronie przeglądarki/Angulara albo przez coś, co blokuje samo wysłanie żądania (preflight, interceptory, service worker, limit gniazd). Poniżej checklista rzeczy, które realnie powodują „pending 0 B” i jak je wykryć/naprawić.
 
 Co w Angularze najczęściej psuje upload
