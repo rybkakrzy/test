@@ -1,3 +1,125 @@
+Krótka odpowiedź: tak, „pending” może wynikać z frontu (Angular). Najczęściej dzieje się to przez złą konfigurację uploadu po stronie przeglądarki/Angulara albo przez coś, co blokuje samo wysłanie żądania (preflight, interceptory, service worker, limit gniazd). Poniżej checklista rzeczy, które realnie powodują „pending 0 B” i jak je wykryć/naprawić.
+
+Co w Angularze najczęściej psuje upload
+
+Ustawiasz ręcznie Content-Type: multipart/form-data
+
+Skutek: brak boundary → serwer nie potrafi odczytać body, a czasem request „wisi”.
+
+Fix: dla FormData nie ustawiaj Content-Type. Przeglądarka zrobi to sama.
+
+const fd = new FormData();
+fd.append('file', file, file.name);
+this.http.post('/api/upload', fd, { reportProgress: true, observe: 'events' });
+
+
+HttpInterceptor dokleja nagłówki do każdego requestu
+
+Typowe: Content-Type, Accept, Authorization, transformacja ciała itp.
+
+Fix: w interceptorze rozróżniaj FormData i usuń Content-Type:
+
+@Injectable()
+export class NoContentTypeForFormDataInterceptor implements HttpInterceptor {
+  intercept(req: HttpRequest<any>, next: HttpHandler) {
+    const isFormData = req.body instanceof FormData;
+    const clean = isFormData ? req.clone({ setHeaders: { } }) : req;
+    // Upewnij się, że NIE ustawiasz Content-Type dla FormData
+    return next.handle(clean);
+  }
+}
+
+
+CORS / preflight (OPTIONS) nie przechodzi
+
+Objawy: właściwy POST nie startuje; w Network widać tylko OPTIONS, a POST jest „pending” lub wcale.
+
+Fix: po stronie serwera/Nginx zwróć 204 dla OPTIONS i odpowiednie nagłówki lub skonfiguruj CORS w .NET.
+
+Service Worker (PWA) łapie żądania
+
+Objawy: „pending” albo dziwne cache’owanie; w DevTools → Application → Service Workers.
+
+Fix: wyłącz SW na próbę (checkbox „Bypass for network”) albo wyklucz /api/** w ngsw-config.json.
+
+Limit gniazd w przeglądarce (HTTP/1.1)
+
+Przeglądarki mają ~6 równoległych połączeń na origin. Jeśli masz SSE/SignalR/dużo XHR, nowy upload czeka → „(Stalled) / (Pending)”.
+
+Fix: włącz HTTP/2 w Nginx albo ogranicz równoległość w kliencie.
+
+Czytasz/obrabiasz plik po stronie klienta przed wysyłką
+
+Np. FileReader + hash/kompresja → długo nic się nie dzieje, wygląda jak „pending”.
+
+Fix: ogranicz preprocessing, wrzuć go do Web Workera albo wysyłaj bezpośrednio.
+
+withCredentials: true wywołuje preflight i serwer go nie obsługuje
+
+Fix: włącz CORS dla poświadczeń lub nie wysyłaj cookies, jeśli nie są potrzebne.
+
+RxJS/Angular: request wcale nie startuje
+
+Np. brak subscribe(), takeUntil anuluje zbyt wcześnie, guard/interceptor zwraca EMPTY.
+
+Fix: sprawdź, czy faktycznie subskrybujesz i nie anulujesz strumienia.
+
+Minimalny „bezpieczny” upload w Angular 18
+upload(file: File) {
+  const form = new FormData();
+  form.append('file', file, file.name); // podaj nazwę pliku
+
+  return this.http.post('/api/upload', form, {
+    reportProgress: true,
+    observe: 'events',     // dostaniesz ProgressEvent
+    // NIE ustawiaj headers: {'Content-Type': ...}
+    // withCredentials: true  // tylko jeśli naprawdę potrzebujesz cookies
+  });
+}
+
+
+UI do debugowania progresu:
+
+this.upload(file).subscribe(event => {
+  if (event.type === HttpEventType.UploadProgress && event.total) {
+    const percent = Math.round(100 * event.loaded / event.total);
+    // pokaż procent
+  } else if (event.type === HttpEventType.Response) {
+    // zakończone
+  }
+}, err => {
+  // obsługa błędu
+});
+
+Jak rozpoznać, że to front (a nie Nginx/.NET)
+
+W DevTools → Network → Waterfall:
+
+„Queuing/Waiting for available socket” trwa długo → limit gniazd (pkt 5).
+
+Widać OPTIONS i brak odpowiedzi → CORS/preflight (pkt 3).
+
+Request ma Request Payload i od razu leci, ale brak odpowiedzi i Size 0 B → częściej backend/proxy; potwierdź curl -v -F "file=@..." http://host/api/upload -H "Expect:".
+
+Zrób test POST do „/api/_upload-test” (endpoint, który tylko spala body) – jeśli działa, front jest OK, problem dalej jest po stronie Nginx/.NET/dysku.
+
+Szybkie „twarde” reguły dla frontu
+
+Dla FormData nigdy nie ustawiaj Content-Type.
+
+Uważaj na interceptory – nie dokładamy nagłówków do FormData.
+
+Unikaj zbędnego odczytu pliku w JS; jeśli musisz – użyj Web Worker.
+
+Gdy masz dużo równoległych połączeń – rozważ HTTP/2 i/lub ogranicz concurrency.
+
+Jeśli różne originy → poprawny CORS i obsługa OPTIONS.
+
+Jeśli pokażesz krótki fragment z Twojego serwisu Angular (metoda uploadu + interceptory) i screen z Waterfalla (kolumna „Timing”), powiem dokładnie, czy tu jest pies pogrzebany, czy trzeba wrócić do Nginxa/OS.
+
+
+
+
 Widzę Twój plik konfiguracyjny Nginx 🙂
 Masz tam serwer słuchający na porcie 15222, zdefiniowany access_log (/doc2/pocz2/nginx/access.log combined) i kilka location kierujących na backendy przez proxy_pass.
 
