@@ -1,406 +1,277 @@
-Jasne — dorzuciłem pełną obsługę stanu “od kliknięcia w przycisk do pojawienia się nazw plików” + profesjonalne logi (czas powrotu z okna wyboru, czas parsowania FileList, liczba i łączny rozmiar plików).
-Logi są widoczne w konsoli i w prostym panelu w UI. Dodałem też detekcję anulowania okna wyboru (gdy użytkownik zamknie dialog bez wyboru).
-
-upload.component.html
-<div class="upload">
-  <!-- Hidden native input -->
-  <input
-    #fileInput
-    type="file"
-    (change)="onFilesSelected($event)"
-    [attr.accept]="accept"
-    [multiple]="allowMultiple"
-    style="display:none" />
-
-  <div class="controls">
-    <button type="button" (click)="openFileDialog(fileInput)" [disabled]="isUploading">
-      Wybierz plik(i)
-    </button>
-
-    <button type="button" (click)="upload()" [disabled]="!files.length || isUploading">
-      Wyślij
-    </button>
-  </div>
-
-  <!-- UI state -->
-  <p>Stan: <strong>{{ uiState }}</strong></p>
-  <ng-container *ngIf="decisionDurationMs >= 0">
-    <p>Powrót z okna wyboru: <strong>{{ decisionDurationMs }} ms</strong></p>
-  </ng-container>
-  <ng-container *ngIf="parseDurationMs >= 0">
-    <p>Parsowanie wyboru: <strong>{{ parseDurationMs }} ms</strong></p>
-  </ng-container>
-
-  <!-- Selected files -->
-  <div *ngIf="files.length">
-    <p>Wybrane pliki ({{ files.length }}), łączny rozmiar: {{ totalSize | number }} B</p>
-    <ul>
-      <li *ngFor="let f of files; trackBy: trackByName">
-        {{ f.name }} — {{ f.size | number }} B
-      </li>
-    </ul>
-  </div>
-
-  <!-- Progress -->
-  <div *ngIf="progress >= 0" class="progress">
-    <progress [value]="progress" max="100"></progress>
-    <span>{{ progress }}%</span>
-  </div>
-
-  <p *ngIf="error" class="error">{{ error }}</p>
-
-  <!-- In-UI log panel (last entries on top) -->
-  <div class="logs" *ngIf="uiLogs.length">
-    <h4>Logi UI</h4>
-    <ul>
-      <li *ngFor="let l of uiLogs.slice().reverse()">
-        <code>[{{ l.time }}] {{ l.level }}:</code> {{ l.message }}
-      </li>
-    </ul>
-  </div>
-</div>
-
-upload.component.ts
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { HttpClient, HttpEventType } from '@angular/common/http';
-import { LoggerService, LogLevel } from './logger.service';
-
-type UiState = 'idle' | 'choosing' | 'parsing' | 'ready' | 'uploading' | 'canceled' | 'error';
-
-interface UiLog {
-  time: string;
-  level: LogLevel;
-  message: string;
+file-upload.model.ts
+export interface FileUploadConfig {
+  allowedTypes: string[];
+  maxSizeInMB: number;
+  uploadUrl: string;
+  multiFile?: boolean;   // default: false
+  autoUpload?: boolean;  // default: true
 }
 
-@Component({
-  selector: 'app-upload',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './upload.component.html',
-})
-export class UploadComponent {
-  // Config
-  accept = '*/*';
-  allowMultiple = true;
-  endpoint = '/api/upload';
+export interface FileUploadItem {
+  file: File;
+  progress: number | null;
+  error?: string;
+  uploaded?: boolean;
+  response?: FileUploadResponse;
+}
 
-  // UI state
-  uiState: UiState = 'idle';
-  files: File[] = [];
-  totalSize = 0;
+export interface FileUploadResponse {
+  success: boolean;
+  message?: string;
+  fileUrl?: string;
+}
 
-  isUploading = false;
-  progress = -1;
-  error = '';
+file-upload.service.ts
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpEvent, HttpEventType, HttpErrorResponse } from '@angular/common/http';
+import { Observable, throwError } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
+import { FileUploadResponse } from './file-upload.model';
 
-  // Timings (ms)
-  private selectionStartedAt = -1;
-  decisionDurationMs = -1;
-  parseDurationMs = -1;
+@Injectable({ providedIn: 'root' })
+export class FileUploadService {
+  constructor(private http: HttpClient) {}
 
-  // UI logs (also mirrored to console)
-  uiLogs: UiLog[] = [];
+  uploadFile(file: File, uploadUrl: string): Observable<number | FileUploadResponse> {
+    const formData = new FormData();
+    formData.append('file', file);
 
-  // Guard to detect dialog cancel (we remove it on focus back)
-  private cancelFocusHandler?: (ev: FocusEvent) => void;
-
-  constructor(private http: HttpClient, private logger: LoggerService) {}
-
-  openFileDialog(input: HTMLInputElement): void {
-    // Mark the beginning of the selection phase
-    this.setUiState('choosing');
-    this.selectionStartedAt = performance.now();
-    this.decisionDurationMs = -1;
-    this.parseDurationMs = -1;
-    this.files = [];
-    this.totalSize = 0;
-    this.error = '';
-    this.progress = -1;
-
-    // Install a one-shot focus handler: when the native dialog closes,
-    // the window regains focus. If no files are selected, we treat it as "canceled".
-    this.cancelFocusHandler = () => {
-      // Timeout 0 ensures input.files is already updated by the browser
-      setTimeout(() => {
-        if (!input.files || input.files.length === 0) {
-          const duration = Math.round(performance.now() - this.selectionStartedAt);
-          this.decisionDurationMs = duration;
-          this.addLog('INFO', `Dialog closed without selection (decision=${duration} ms).`);
-          this.setUiState('canceled');
-        }
-        window.removeEventListener('focus', this.cancelFocusHandler!, true);
-        this.cancelFocusHandler = undefined;
-      }, 0);
-    };
-    window.addEventListener('focus', this.cancelFocusHandler, true);
-
-    // Open the native file dialog
-    input.click();
-    this.addLog('DEBUG', 'Native file dialog opened.');
-  }
-
-  onFilesSelected(event: Event): void {
-    // Guard: user might cancel; in that case this handler won't fire
-    this.setUiState('parsing');
-
-    const decisionStop = performance.now();
-    this.decisionDurationMs = this.selectionStartedAt >= 0
-      ? Math.round(decisionStop - this.selectionStartedAt)
-      : -1;
-
-    const parseStart = performance.now();
-
-    // Safely read FileList
-    const input = event.target as HTMLInputElement;
-    const list = input.files;
-    const selected: File[] = [];
-
-    if (list && list.length > 0) {
-      for (let i = 0; i < list.length; i++) {
-        const f = list.item(i);
-        if (f) selected.push(f);
-      }
-    }
-
-    this.files = selected;
-    this.totalSize = selected.reduce((acc, f) => acc + f.size, 0);
-
-    const parseStop = Math.round(performance.now() - parseStart);
-    this.parseDurationMs = parseStop;
-
-    // Log useful, structured info
-    this.addLog('INFO', `Files selected: ${selected.length}, totalSize=${this.totalSize} B `
-      + `(decision=${this.decisionDurationMs} ms, parse=${this.parseDurationMs} ms).`);
-
-    this.setUiState('ready');
-  }
-
-  upload(): void {
-    if (!this.files.length || this.isUploading) return;
-
-    const form = new FormData();
-    for (const f of this.files) {
-      form.append('files', f, f.name);
-    }
-
-    this.isUploading = true;
-    this.progress = 0;
-    this.setUiState('uploading');
-    this.addLog('INFO', `Starting upload of ${this.files.length} file(s), totalSize=${this.totalSize} B.`);
-
-    this.http.post(this.endpoint, form, {
+    return this.http.post<FileUploadResponse>(uploadUrl, formData, {
       reportProgress: true,
-      observe: 'events',
-    }).subscribe({
-      next: (evt) => {
-        if (evt.type === HttpEventType.UploadProgress) {
-          if (evt.total && evt.total > 0) {
-            const p = Math.round(100 * (evt.loaded / evt.total));
-            this.progress = p;
-          }
+      observe: 'events'
+    }).pipe(
+      map((event: HttpEvent<any>) => {
+        if (event.type === HttpEventType.UploadProgress && event.total) {
+          return Math.round((100 * event.loaded) / event.total);
         }
-        if (evt.type === HttpEventType.Response) {
-          this.isUploading = false;
-          this.progress = 100;
-          this.addLog('INFO', 'Upload completed successfully.');
-          this.setUiState('ready');
+        if (event.type === HttpEventType.Response) {
+          return event.body as FileUploadResponse;
+        }
+        return 0;
+      }),
+      catchError((error: HttpErrorResponse) => {
+        return throwError(() => new Error(error.message || 'File upload failed'));
+      })
+    );
+  }
+}
+
+file-upload.component.ts
+import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { FileUploadConfig, FileUploadItem, FileUploadResponse } from './file-upload.model';
+import { FileUploadService } from './file-upload.service';
+
+@Component({
+  selector: 'app-file-upload',
+  templateUrl: './file-upload.component.html',
+  styleUrls: ['./file-upload.component.scss']
+})
+export class FileUploadComponent {
+  @Input() config!: FileUploadConfig;
+  @Output() fileUploaded = new EventEmitter<FileUploadResponse>();
+  @Output() allFilesUploaded = new EventEmitter<FileUploadResponse[]>();
+
+  files: FileUploadItem[] = [];
+
+  constructor(private uploadService: FileUploadService) {}
+
+  onFileDropped(files: FileList | null): void {
+    if (!files) return;
+    this.addFiles(files);
+  }
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (!input.files) return;
+    this.addFiles(input.files);
+    input.value = '';
+  }
+
+  private addFiles(fileList: FileList): void {
+    const validFiles: FileUploadItem[] = [];
+
+    Array.from(fileList).forEach(file => {
+      const error = this.validateFile(file);
+      validFiles.push({ file, progress: null, error });
+    });
+
+    if (!this.config.multiFile) {
+      this.files = [validFiles[0]];
+    } else {
+      this.files.push(...validFiles);
+    }
+
+    if (this.config.autoUpload !== false) {
+      this.uploadAll();
+    }
+  }
+
+  private validateFile(file: File): string | undefined {
+    if (this.config.allowedTypes.length && !this.config.allowedTypes.includes(file.type)) {
+      return `Invalid type: ${file.type}`;
+    }
+    const maxSizeBytes = this.config.maxSizeInMB * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      return `File too large (max ${this.config.maxSizeInMB} MB)`;
+    }
+    return undefined;
+  }
+
+  uploadFile(item: FileUploadItem): void {
+    if (item.error || item.uploaded) return;
+
+    this.uploadService.uploadFile(item.file, this.config.uploadUrl).subscribe({
+      next: (event) => {
+        if (typeof event === 'number') {
+          item.progress = event;
+        } else {
+          item.response = event;
+          item.uploaded = true;
+          this.fileUploaded.emit(event);
         }
       },
       error: (err) => {
-        this.isUploading = false;
-        this.progress = -1;
-        this.error = 'Upload nie powiódł się.';
-        this.setUiState('error');
-        this.addLog('ERROR', `Upload failed: ${err?.message ?? 'unknown error'}.`);
-        console.error('Upload error:', err);
+        item.error = err.message;
       }
     });
   }
 
-  trackByName(_: number, f: File): string {
-    return f.name;
+  uploadAll(): void {
+    const responses: FileUploadResponse[] = [];
+    this.files.forEach(item => {
+      if (!item.error && !item.uploaded) {
+        this.uploadService.uploadFile(item.file, this.config.uploadUrl).subscribe({
+          next: (event) => {
+            if (typeof event === 'number') {
+              item.progress = event;
+            } else {
+              item.response = event;
+              item.uploaded = true;
+              responses.push(event);
+              this.fileUploaded.emit(event);
+
+              if (responses.length === this.files.filter(f => !f.error).length) {
+                this.allFilesUploaded.emit(responses);
+              }
+            }
+          },
+          error: (err) => {
+            item.error = err.message;
+          }
+        });
+      }
+    });
   }
 
-  private setUiState(s: UiState): void {
-    this.uiState = s;
-    this.logger.debug('UI state changed', { state: s });
-  }
-
-  private addLog(level: LogLevel, message: string): void {
-    // Mirror to console with structured details
-    switch (level) {
-      case 'DEBUG': this.logger.debug(message); break;
-      case 'INFO':  this.logger.info(message); break;
-      case 'WARN':  this.logger.warn(message); break;
-      case 'ERROR': this.logger.error(message); break;
-    }
-    // Store lightweight log in UI
-    this.uiLogs.push({ time: new Date().toISOString(), level, message });
-    if (this.uiLogs.length > 200) this.uiLogs.shift(); // keep last 200
-  }
-}
-
-logger.service.ts
-import { Injectable } from '@angular/core';
-
-export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
-
-@Injectable({ providedIn: 'root' })
-export class LoggerService {
-  // Simple, consistent console logger with grouping and timestamps
-
-  debug(message: string, data?: unknown): void {
-    // Use groupCollapsed for better readability
-    if (data !== undefined) {
-      console.groupCollapsed(`[DEBUG] ${new Date().toISOString()} - ${message}`);
-      console.debug(data);
-      console.groupEnd();
-    } else {
-      console.debug(`[DEBUG] ${new Date().toISOString()} - ${message}`);
-    }
-  }
-
-  info(message: string, data?: unknown): void {
-    if (data !== undefined) {
-      console.groupCollapsed(`%c[INFO]%c ${new Date().toISOString()} - ${message}`, 'color:#2b8a3e', 'color:inherit');
-      console.info(data);
-      console.groupEnd();
-    } else {
-      console.info(`%c[INFO]%c ${new Date().toISOString()} - ${message}`, 'color:#2b8a3e', 'color:inherit');
-    }
-  }
-
-  warn(message: string, data?: unknown): void {
-    if (data !== undefined) {
-      console.groupCollapsed(`%c[WARN]%c ${new Date().toISOString()} - ${message}`, 'color:#f59f00', 'color:inherit');
-      console.warn(data);
-      console.groupEnd();
-    } else {
-      console.warn(`%c[WARN]%c ${new Date().toISOString()} - ${message}`, 'color:#f59f00', 'color:inherit');
-    }
-  }
-
-  error(message: string, data?: unknown): void {
-    if (data !== undefined) {
-      console.groupCollapsed(`%c[ERROR]%c ${new Date().toISOString()} - ${message}`, 'color:#c92a2a', 'color:inherit');
-      console.error(data);
-      console.groupEnd();
-    } else {
-      console.error(`%c[ERROR]%c ${new Date().toISOString()} - ${message}`, 'color:#c92a2a', 'color:inherit');
-    }
+  removeFile(index: number): void {
+    this.files.splice(index, 1);
   }
 }
 
-Co dostajesz dzięki temu
+file-upload.component.html
+<div
+  class="upload-container"
+  [class.dragging]="false"
+  (dragover)="$event.preventDefault()"
+  (drop)="onFileDropped($event.dataTransfer?.files); $event.preventDefault()"
+>
+  <p>Drag & drop file(s) here or click below</p>
+  
+  <button type="button" (click)="fileInput.click()">Choose File(s)</button>
+  <input 
+    #fileInput 
+    type="file" 
+    [attr.multiple]="config.multiFile ? '' : null"
+    hidden 
+    (change)="onFileSelected($event)" 
+  />
+</div>
 
-uiState: widzisz, czy jesteś w fazie choosing (otwarte okno), parsing (czytanie FileList), ready, uploading, canceled lub error.
+<div class="file-list" *ngIf="files.length > 0">
+  <div class="file-item" *ngFor="let item of files; let i = index">
+    <span>{{ item.file.name }} ({{ (item.file.size / 1024 / 1024) | number:'1.2-2' }} MB)</span>
 
-Pomiary czasu:
+    <span *ngIf="item.error" class="error"> - {{ item.error }}</span>
 
-decisionDurationMs – ile trwał powrót z okna Windows (od kliknięcia do change/focus back).
+    <ng-container *ngIf="!item.error">
+      <span *ngIf="item.progress !== null && !item.uploaded">
+        Uploading... {{ item.progress }}%
+      </span>
+      <span *ngIf="item.uploaded && item.response?.success">✔ Uploaded</span>
+      <span *ngIf="item.uploaded && !item.response?.success">✖ Failed</span>
+    </ng-container>
 
-parseDurationMs – ile trwało zbudowanie listy plików w UI (ważne przy dużych paczkach).
+    <button type="button" (click)="removeFile(i)">Remove</button>
+    <button *ngIf="!config.autoUpload && !item.uploaded && !item.error" type="button" (click)="uploadFile(item)">
+      Upload
+    </button>
+  </div>
 
-Detekcja anulowania: po powrocie fokusu, jeśli input.files jest puste → stan canceled + log.
+  <div *ngIf="!config.autoUpload">
+    <button type="button" (click)="uploadAll()">Upload All</button>
+  </div>
+</div>
 
-Profesjonalne logi: w konsoli (z grupowaniem i poziomami) oraz w mini panelu w UI.
+file-upload.component.scss
+.upload-container {
+  border: 2px dashed #bbb;
+  border-radius: 8px;
+  text-align: center;
+  padding: 2rem;
+  margin-bottom: 1rem;
 
-Jeśli chcesz wariant z drag & drop, ograniczeniem łącznego rozmiaru / liczby plików, albo z „upload queue” i anulowaniem poszczególnych wysyłek – dopiszę.
-
-Powiedziałeś(-aś):
-daj możliwość set-upu   accept = '*/*';
-  allowMultiple = true;
-  endpoint = '/api/upload';
-ChatGPT powiedział:
-Myślał przez 23s
-
-Pewnie — zróbmy to jako konfigurowalne @Input() (Angular 18). Dodałem też booleanAttribute, żeby można było ustawiać allowMultiple zwykłym atrybutem (allowMultiple="false" → false).
-
-upload.component.ts (fragment z konfiguracją + drobne walidacje)
-import { Component, Input, booleanAttribute } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { HttpClient, HttpEventType } from '@angular/common/http';
-import { LoggerService, LogLevel } from './logger.service';
-
-type UiState = 'idle' | 'choosing' | 'parsing' | 'ready' | 'uploading' | 'canceled' | 'error';
-
-@Component({
-  selector: 'app-upload',
-  standalone: true,
-  imports: [CommonModule],
-  templateUrl: './upload.component.html',
-})
-export class UploadComponent {
-  // ======== CONFIGURABLE INPUTS ========
-  /** MIME filter or extensions (e.g., 'image/*' or '.pdf,.docx'). */
-  @Input() accept: string = '*/*';
-
-  /** Allow selecting multiple files. Accepts true/false and string "false". */
-  @Input({ transform: booleanAttribute }) allowMultiple: boolean = true;
-
-  /** Backend endpoint to POST FormData to. Can be relative or absolute URL. */
-  @Input() endpoint: string = '/api/upload';
-
-  // ======== STATE ========
-  uiState: UiState = 'idle';
-  files: File[] = [];
-  totalSize = 0;
-  isUploading = false;
-  progress = -1;
-  error = '';
-
-  private selectionStartedAt = -1;
-  decisionDurationMs = -1;
-  parseDurationMs = -1;
-
-  uiLogs: { time: string; level: LogLevel; message: string }[] = [];
-  private cancelFocusHandler?: (ev: FocusEvent) => void;
-
-  constructor(private http: HttpClient, private logger: LoggerService) {}
-
-  // …reszta metod (openFileDialog, onFilesSelected, upload, setUiState, addLog) bez zmian…
-
-  // Small guard so misconfiguration is visible early
-  private validateConfig(): void {
-    if (!this.endpoint || this.endpoint.trim().length === 0) {
-      this.endpoint = '/api/upload';
-      this.addLog('WARN', 'Empty endpoint provided; falling back to /api/upload.');
-    }
-  }
-
-  ngOnInit(): void {
-    this.validateConfig();
-    this.addLog('DEBUG', `Config -> accept="${this.accept}", allowMultiple=${this.allowMultiple}, endpoint="${this.endpoint}"`);
+  button {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    border: none;
+    background-color: #007bff;
+    color: #fff;
+    cursor: pointer;
   }
 }
 
-upload.component.html (bez zmian – używa konfiguracji)
-<input
-  #fileInput
-  type="file"
-  (change)="onFilesSelected($event)"
-  [attr.accept]="accept"
-  [multiple]="allowMultiple"
-  style="display:none" />
-<!-- …reszta jak wcześniej… -->
+.file-list {
+  .file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #eee;
 
-Przykłady użycia w szablonie rodzica
-<!-- 1) Najprościej: atrybuty (allowMultiple parsowane przez booleanAttribute) -->
-<app-upload accept=".pdf,.docx" allowMultiple="false" endpoint="/api/files/upload"></app-upload>
+    .error {
+      color: #d9534f;
+      margin-left: 0.5rem;
+    }
 
-<!-- 2) Z bindowaniem property (np. z configu komponentu) -->
-<app-upload
-  [accept]="myAccept"
-  [allowMultiple]="myAllowMultiple"
-  [endpoint]="myEndpoint">
-</app-upload>
+    button {
+      margin-left: 0.5rem;
+      padding: 0.3rem 0.6rem;
+    }
+  }
+}
 
-// parent.component.ts
-myAccept = 'image/*';
-myAllowMultiple = true;
-myEndpoint = '/api/images/upload';
+🔧 Użycie w aplikacji
+<!-- Upload jednego pliku, wysyłka od razu -->
+<app-file-upload
+  [config]="{
+    allowedTypes: ['image/png', 'image/jpeg'],
+    maxSizeInMB: 5,
+    uploadUrl: '/api/files/upload',
+    multiFile: false,
+    autoUpload: true
+  }"
+  (fileUploaded)="onFileUploaded($event)"
+></app-file-upload>
 
-
-To wszystko – teraz accept, allowMultiple i endpoint są w pełni konfigurowalne, z walidacją i logiem startowym, a reszta logiki (stany + logi czasu wyboru/pliku) pozostaje bez zmian.
+<!-- Upload wielu plików, lista + ręczne wysyłanie -->
+<app-file-upload
+  [config]="{
+    allowedTypes: ['application/pdf'],
+    maxSizeInMB: 20,
+    uploadUrl: '/api/files/upload',
+    multiFile: true,
+    autoUpload: false
+  }"
+  (allFilesUploaded)="onAllUploaded($event)"
+></app-file-upload>
