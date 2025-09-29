@@ -1,3 +1,45 @@
+public class FileDto
+{
+    public string FileName { get; set; } = string.Empty;
+    public string ContentBase64 { get; set; } = string.Empty;
+}
+Metoda w kontrolerze (bez IFormFile)
+csharp
+Skopiuj kod
+[HttpPost("template")]
+[Authorize(Roles = "Validator")]
+[Consumes("application/json")]
+public async Task<IActionResult> PostValidation([FromBody] FileDto fileDto)
+{
+    if (fileDto == null || string.IsNullOrWhiteSpace(fileDto.ContentBase64))
+    {
+        return BadRequest("Nieprawidłowy plik.");
+    }
+
+    try
+    {
+        // Decode file content from base64
+        var fileBytes = Convert.FromBase64String(fileDto.ContentBase64);
+
+        // Log info about uploaded file
+        Logger.LogTrace("[Validation] Wczytano plik: {FileName}, wysłany przez: {User}", 
+            fileDto.FileName, User.Identity?.Name);
+
+        // Verify file using your manager
+        using var memoryStream = new MemoryStream(fileBytes);
+        var result = DocumentQualityManager.VerifyAndCorrect(memoryStream.ToArray());
+
+        return Ok(result);
+    }
+    catch (FormatException)
+    {
+        return BadRequest("Plik nie jest poprawnym base64.");
+    }
+}
+
+
+
+
 emerg – sytuacje krytyczne, serwer nie jest w stanie działać.
 
 alert – bardzo poważne błędy wymagające natychmiastowej reakcji.
