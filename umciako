@@ -1,3 +1,33 @@
+[HttpPost("template")]
+[Authorize(Roles = "Validator")]
+[Consumes("application/json")]
+public async Task<IActionResult> PostValidation([FromBody] FileDto fileDto)
+{
+    if (fileDto == null || string.IsNullOrWhiteSpace(fileDto.ContentBase64))
+    {
+        return BadRequest("Nieprawidłowy plik.");
+    }
+
+    try
+    {
+        // Decode file content from base64
+        var fileBytes = Convert.FromBase64String(fileDto.ContentBase64);
+
+        Logger.LogTrace("[Validation] Wczytano plik: {FileName}, wysłany przez: {User}", 
+            fileDto.FileName, User.Identity?.Name);
+
+        // Tutaj dodaj brakujący drugi argument – np. nazwę pliku
+        var result = DocumentQualityManager.VerifyAndCorrect(fileBytes, fileDto.FileName);
+
+        return Ok(result);
+    }
+    catch (FormatException)
+    {
+        return BadRequest("Plik nie jest poprawnym base64.");
+    }
+}
+
+
 public class FileDto
 {
     public string FileName { get; set; } = string.Empty;
