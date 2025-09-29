@@ -1,3 +1,32 @@
+emerg – sytuacje krytyczne, serwer nie jest w stanie działać.
+
+alert – bardzo poważne błędy wymagające natychmiastowej reakcji.
+
+crit – błędy krytyczne, ale mniej drastyczne niż alert.
+
+error – standardowe błędy (np. brak pliku, błąd połączenia).
+
+warn – ostrzeżenia, potencjalne problemy, które nie blokują działania.
+
+notice – informacje o ważnych, ale niekrytycznych zdarzeniach.
+
+info – ogólne informacje o pracy serwera.
+
+debug – najbardziej szczegółowy poziom, loguje wszystko, przydatny głównie w debugowaniu.
+
+Przykład konfiguracji
+# Plik /etc/nginx/nginx.conf
+
+# Zapisuj logi błędów od poziomu warn wzwyż
+error_log  /var/log/nginx/error.log  warn;
+
+# Zapisuj access logi (osobne od error logów)
+access_log /var/log/nginx/access.log  main;
+
+
+
+
+
 file-upload.model.ts
 export interface FileUploadConfig {
   allowedTypes: string[];
