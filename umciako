@@ -1,3 +1,29 @@
+$FilePath = "C:\Users\Xstixx\Desktop\example.docx"
+$Boundary = [System.Guid]::NewGuid().ToString()
+$LF = "`r`n"
+
+$FileBytes = [System.IO.File]::ReadAllBytes($FilePath)
+$FileEnc = [System.Text.Encoding]::GetEncoding("ISO-8859-1").GetString($FileBytes)
+
+$BodyLines = (
+    "--$Boundary",
+    "Content-Disposition: form-data; name=`"file`"; filename=`"example.docx`"",
+    "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document$LF",
+    $FileEnc,
+    "--$Boundary",
+    "Content-Disposition: form-data; name=`"additionalProp1`"$LF",
+    "test value sun",
+    "--$Boundary--$LF"
+) -join $LF
+
+Invoke-WebRequest -Uri "http://localhost:5111/api/Validations/TemplateId" `
+                  -Method Post `
+                  -Body $BodyLines `
+                  -ContentType "multipart/form-data; boundary=$Boundary"
+------------------
+
+
+
 [HttpPost("template")]
 [Authorize(Roles = "Validator")]
 [Consumes("application/json")]
