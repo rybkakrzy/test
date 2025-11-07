@@ -1,0 +1,100 @@
+3) (Opcjonalnie) Dodaj pliki seedów SQL
+
+Najprościej otworzyć Notatnik i wkleić treść.
+
+Przykład dla orders:
+
+notepad seed\orders\01_schema.sql
+
+
+Wklej:
+
+-- Create table for Orders (example)
+CREATE TABLE IF NOT EXISTS orders (
+  id SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  total_amount NUMERIC(12,2) NOT NULL
+);
+
+
+Zapisz.
+Analogicznie możesz dodać seed\billing\01_schema.sql, seed\analytics\01_schema.sql.
+
+Seedy uruchomią się tylko przy pierwszej inicjalizacji danych danego kontenera (gdy wolumen jest pusty).
+
+4) Utwórz plik compose.yaml
+
+Otwórz Notatnik:
+
+notepad compose.yaml
+
+
+Wklej całość i zapisz:
+
+version: "3.8"
+
+services:
+  db-orders:
+    image: docker.io/library/postgres:16-alpine
+    container_name: db-orders
+    ports:
+      - "5433:5432"   # host:container
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: orders_pass
+      POSTGRES_DB: orders
+    volumes:
+      - pgdata_orders:/var/lib/postgresql/data
+      - ./seed/orders:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d orders -q || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  db-billing:
+    image: docker.io/library/postgres:16-alpine
+    container_name: db-billing
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: billing_pass
+      POSTGRES_DB: billing
+    volumes:
+      - pgdata_billing:/var/lib/postgresql/data
+      - ./seed/billing:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d billing -q || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  db-analytics:
+    image: docker.io/library/postgres:16-alpine
+    container_name: db-analytics
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: analytics_pass
+      POSTGRES_DB: analytics
+    volumes:
+      - pgdata_analytics:/var/lib/postgresql/data
+      - ./seed/analytics:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d analytics -q || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata_orders: {}
+  pgdata_billing: {}
+  pgdata_analytics: {}
+
+
+Używam named volumes (trwałe dane) i bind-mountów seedów z katalogu projektu (udostępniany do VM przez Podmana).
