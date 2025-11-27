@@ -12,42 +12,30 @@ private static readonly string[] GuaranteeOrBillPhrases =
     "Deklaracja wekslowa BGK"
 };
 
-public bool AnyOtherDocument(IReadOnlyCollection<string> documents)
+public bool AnyOtherDocument(List<List<string>> documents)
 {
     return ContainsDocumentWithAnyPhrase(documents, OtherDocumentPhrases);
 }
 
-public bool AnyGuaranteeOrBillDocument(IReadOnlyCollection<string> documents)
+public bool AnyGuaranteeOrBillDocument(List<List<string>> documents)
 {
     return ContainsDocumentWithAnyPhrase(documents, GuaranteeOrBillPhrases);
 }
 
 private static bool ContainsDocumentWithAnyPhrase(
-    IReadOnlyCollection<string> documents,
-    IReadOnlyCollection<string> phrases)
+    List<List<string>> documents,
+    IEnumerable<string> phrases)
 {
     if (documents == null || documents.Count == 0)
     {
         return false;
     }
 
-    foreach (var document in documents)
-    {
-        // Skip empty entries to avoid unnecessary checks
-        if (string.IsNullOrWhiteSpace(document))
-        {
-            continue;
-        }
-
-        // Check if document contains any of the phrases
-        var containsAnyPhrase = phrases.Any(phrase =>
-            document.Contains(phrase, StringComparison.OrdinalIgnoreCase));
-
-        if (containsAnyPhrase)
-        {
-            return true;
-        }
-    }
-
-    return false;
+    // Flatten all strings from inner lists and check if any cell contains any phrase
+    return documents
+        .Where(row => row != null)
+        .SelectMany(row => row)
+        .Where(cell => !string.IsNullOrWhiteSpace(cell))
+        .Any(cell => phrases.Any(phrase =>
+            cell.Contains(phrase, StringComparison.OrdinalIgnoreCase)));
 }
