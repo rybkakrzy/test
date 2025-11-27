@@ -1,29 +1,44 @@
-.app-shell__footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 1.5rem;
-  background: #ffffff;
-  border-top: 1px solid #e0e0e0;
-  font-size: 0.8rem;
-  color: #555;
+[JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+public bool AnyOtherButNotBgkBillOfExchange
+{
+    get
+    {
+        var documents = DocumentsCache.GetList(); // Get cached documents once
+
+        if (documents == null || documents.Count == 0)
+        {
+            return false;
+        }
+
+        var hasNonBgkGuaranteeDocuments = documents.Any(ContainsNonBgkGuaranteeDocument);
+        var hasBgkBillDocuments = documents.Any(ContainsBgkBillDocument);
+
+        // We want: any non-BGK guarantee docs AND no BGK bill-related docs
+        return hasNonBgkGuaranteeDocuments && !hasBgkBillDocuments;
+    }
 }
 
-.app-shell__footer-left,
-.app-shell__footer-right {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
+private static bool ContainsNonBgkGuaranteeDocument(string documentName)
+{
+    if (string.IsNullOrWhiteSpace(documentName))
+    {
+        return false;
+    }
+
+    // Check if document is one of the non-BGK guarantee related documents
+    return documentName.Contains("Aneks do umowy poręczenia", StringComparison.OrdinalIgnoreCase)
+           || documentName.Contains("Zgoda do umowy poręczenia małżonka", StringComparison.OrdinalIgnoreCase)
+           || documentName.Contains("Oświadczenie poręczyciela wekslowego", StringComparison.OrdinalIgnoreCase);
 }
 
-.app-shell__footer-app-name {
-  font-weight: 600;
-}
+private static bool ContainsBgkBillDocument(string documentName)
+{
+    if (string.IsNullOrWhiteSpace(documentName))
+    {
+        return false;
+    }
 
-.app-shell__footer-divider {
-  opacity: 0.5;
-}
-
-.app-shell__footer-text {
-  opacity: 0.8;
+    // Check if document is a BGK bill of exchange or related declaration
+    return documentName.Contains("Weksel BGK", StringComparison.OrdinalIgnoreCase)
+           || documentName.Contains("Deklaracja wekslowa BGK", StringComparison.OrdinalIgnoreCase);
 }
