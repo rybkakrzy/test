@@ -1,96 +1,53 @@
-[JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-public bool AnyOtherButNotBgkBillOfExchange
+private static readonly string[] OtherDocumentPhrases =
 {
-    get
-    {
-        var documents = DocumentsCache.GetList(); // Get cached documents once
+    "Zgoda umowy poręczenia",
+    "Aneks umowy poręczenia",
+    "Oświadczenie poręczyciela"
+};
 
-        if (documents == null || documents.Count == 0)
+private static readonly string[] GuaranteeOrBillPhrases =
+{
+    "Weksel własny",
+    "Oświadczenie wekslowe",
+    "Deklaracja wekslowa BGK"
+};
+
+public bool AnyOtherDocument(IReadOnlyCollection<string> documents)
+{
+    return ContainsDocumentWithAnyPhrase(documents, OtherDocumentPhrases);
+}
+
+public bool AnyGuaranteeOrBillDocument(IReadOnlyCollection<string> documents)
+{
+    return ContainsDocumentWithAnyPhrase(documents, GuaranteeOrBillPhrases);
+}
+
+private static bool ContainsDocumentWithAnyPhrase(
+    IReadOnlyCollection<string> documents,
+    IReadOnlyCollection<string> phrases)
+{
+    if (documents == null || documents.Count == 0)
+    {
+        return false;
+    }
+
+    foreach (var document in documents)
+    {
+        // Skip empty entries to avoid unnecessary checks
+        if (string.IsNullOrWhiteSpace(document))
         {
-            return false;
+            continue;
         }
 
-        var hasNonBgkGuaranteeDocuments = documents.Any(ContainsNonBgkGuaranteeDocument);
-        var hasBgkBillDocuments = documents.Any(ContainsBgkBillDocument);
+        // Check if document contains any of the phrases
+        var containsAnyPhrase = phrases.Any(phrase =>
+            document.Contains(phrase, StringComparison.OrdinalIgnoreCase));
 
-        // We want: any non-BGK guarantee docs AND no BGK bill-related docs
-        return hasNonBgkGuaranteeDocuments && !hasBgkBillDocuments;
-    }
-}
-
-private static bool ContainsNonBgkGuaranteeDocument(string documentName)
-{
-    if (string.IsNullOrWhiteSpace(documentName))
-    {
-        return false;
-    }
-
-    // Check if document is one of the non-BGK guarantee related documents
-    return documentName.Contains("Aneks do umowy poręczenia", StringComparison.OrdinalIgnoreCase)
-           || documentName.Contains("Zgoda do umowy poręczenia małżonka", StringComparison.OrdinalIgnoreCase)
-           || documentName.Contains("Oświadczenie poręczyciela wekslowego", StringComparison.OrdinalIgnoreCase);
-}
-
-private static bool ContainsBgkBillDocument(string documentName)
-{
-    if (string.IsNullOrWhiteSpace(documentName))
-    {
-        return false;
-    }
-
-    // Check if document is a BGK bill of exchange or related declaration
-    return documentName.Contains("Weksel BGK", StringComparison.OrdinalIgnoreCase)
-           || documentName.Contains("Deklaracja wekslowa BGK", StringComparison.OrdinalIgnoreCase);
-}
-
-
-
-[JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
-public bool AnyOtherButNotBgkBillOfExchange
-{
-    get
-    {
-        // Get cached documents and flatten List<List<string>> to List<string>
-        var documentNames = DocumentsCache
-            .GetList<List<string>>()        // <- tu jest źródło: lista list
-            ?.SelectMany(d => d)            // flatten
-            .ToList() 
-            ?? new List<string>();          // never null
-
-        if (documentNames.Count == 0)
+        if (containsAnyPhrase)
         {
-            return false;
+            return true;
         }
-
-        var hasNonBgkGuaranteeDocuments = documentNames.Any(ContainsNonBgkGuaranteeDocument);
-        var hasBgkBillDocuments = documentNames.Any(ContainsBgkBillDocument);
-
-        // We want: any non-BGK guarantee docs AND no BGK bill-related docs
-        return hasNonBgkGuaranteeDocuments && !hasBgkBillDocuments;
-    }
-}
-
-private static bool ContainsNonBgkGuaranteeDocument(string documentName)
-{
-    if (string.IsNullOrWhiteSpace(documentName))
-    {
-        return false;
     }
 
-    // Check if document is one of the non-BGK guarantee related documents
-    return documentName.Contains("Aneks do umowy poręczenia", StringComparison.OrdinalIgnoreCase)
-           || documentName.Contains("Zgoda do umowy poręczenia małżonka", StringComparison.OrdinalIgnoreCase)
-           || documentName.Contains("Oświadczenie poręczyciela wekslowego", StringComparison.OrdinalIgnoreCase);
-}
-
-private static bool ContainsBgkBillDocument(string documentName)
-{
-    if (string.IsNullOrWhiteSpace(documentName))
-    {
-        return false;
-    }
-
-    // Check if document is a BGK bill of exchange or related declaration
-    return documentName.Contains("Weksel BGK", StringComparison.OrdinalIgnoreCase)
-           || documentName.Contains("Deklaracja wekslowa BGK", StringComparison.OrdinalIgnoreCase);
+    return false;
 }
