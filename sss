@@ -42,3 +42,55 @@ private static bool ContainsBgkBillDocument(string documentName)
     return documentName.Contains("Weksel BGK", StringComparison.OrdinalIgnoreCase)
            || documentName.Contains("Deklaracja wekslowa BGK", StringComparison.OrdinalIgnoreCase);
 }
+
+
+
+[JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+public bool AnyOtherButNotBgkBillOfExchange
+{
+    get
+    {
+        // Get cached documents and flatten List<List<string>> to List<string>
+        var documentNames = DocumentsCache
+            .GetList<List<string>>()        // <- tu jest źródło: lista list
+            ?.SelectMany(d => d)            // flatten
+            .ToList() 
+            ?? new List<string>();          // never null
+
+        if (documentNames.Count == 0)
+        {
+            return false;
+        }
+
+        var hasNonBgkGuaranteeDocuments = documentNames.Any(ContainsNonBgkGuaranteeDocument);
+        var hasBgkBillDocuments = documentNames.Any(ContainsBgkBillDocument);
+
+        // We want: any non-BGK guarantee docs AND no BGK bill-related docs
+        return hasNonBgkGuaranteeDocuments && !hasBgkBillDocuments;
+    }
+}
+
+private static bool ContainsNonBgkGuaranteeDocument(string documentName)
+{
+    if (string.IsNullOrWhiteSpace(documentName))
+    {
+        return false;
+    }
+
+    // Check if document is one of the non-BGK guarantee related documents
+    return documentName.Contains("Aneks do umowy poręczenia", StringComparison.OrdinalIgnoreCase)
+           || documentName.Contains("Zgoda do umowy poręczenia małżonka", StringComparison.OrdinalIgnoreCase)
+           || documentName.Contains("Oświadczenie poręczyciela wekslowego", StringComparison.OrdinalIgnoreCase);
+}
+
+private static bool ContainsBgkBillDocument(string documentName)
+{
+    if (string.IsNullOrWhiteSpace(documentName))
+    {
+        return false;
+    }
+
+    // Check if document is a BGK bill of exchange or related declaration
+    return documentName.Contains("Weksel BGK", StringComparison.OrdinalIgnoreCase)
+           || documentName.Contains("Deklaracja wekslowa BGK", StringComparison.OrdinalIgnoreCase);
+}
