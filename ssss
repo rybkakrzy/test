@@ -1,0 +1,37 @@
+Treść (proponowany układ sekcjami):
+
+Co analizuje:
+
+struktura dokumentu (nagłówki, listy, tabele, akapity)
+
+użyte style i spójność formatowania
+
+elementy istotne dla dostępności (np. opisy, kolejność treści)
+
+elementy wymagane przez standard firmowy (np. sekcje obowiązkowe, stopki, oznaczenia)
+
+Jakie standardy sprawdza:
+
+zgodność z wybranymi wymaganiami WCAG dla dokumentów
+
+zgodność ze standardami organizacji z guidebook 1.9
+
+egzekwowanie „dobrych praktyk” dla szablonów w DOC2
+
+Wynik działania walidatora:
+
+raport z walidacji, zawierający:
+
+błędy krytyczne
+
+ostrzeżenia
+
+rekomendacje usprawnień
+
+częściowo poprawiony szablon:
+
+automatyczne poprawki tam, gdzie jest to bezpieczne i sensowne
+
+oznaczenie, co zostało poprawione automatycznie
+
+wskazanie elementów, które wymagają jeszcze decyzji autora
