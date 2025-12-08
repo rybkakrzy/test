@@ -1,0 +1,34 @@
+public class DocumentAnalyzer
+{
+    public DocumentStructure AnalyzeDocument(Stream docxStream)
+    {
+        using (WordprocessingDocument doc = 
+            WordprocessingDocument.Open(docxStream, false))
+        {
+            var mainPart = doc.MainDocumentPart;
+            var structure = new DocumentStructure
+            {
+                HasStyles = mainPart.StyleDefinitionsPart != null,
+                HasNumbering = mainPart.NumberingDefinitionsPart != null,
+                ImageCount = mainPart.ImageParts.Count(),
+                RelationshipCount = mainPart. Parts.Count()
+            };
+
+            // Analiza struktury nagłówków
+            var body = mainPart.Document.Body;
+            structure.HeadingHierarchy = 
+                ExtractHeadingHierarchy(body);
+            
+            // Wykrywanie tabel
+            structure.Tables = body.Descendants<Table>()
+                .Select(t => new TableInfo
+                {
+                    RowCount = t.Elements<TableRow>().Count(),
+                    HasHeaderRow = HasTableHeader(t),
+                    ColumnCount = GetColumnCount(t)
+                }). ToList();
+
+            return structure;
+        }
+    }
+}
